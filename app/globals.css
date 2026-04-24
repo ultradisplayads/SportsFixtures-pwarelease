@@ -1,0 +1,389 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* ── Sports Fixtures — logo-aligned green theme (light) ── */
+  /* Logo palette: deep forest #0d2a0d, lime #6dbf2f, white, crimson #cc2200 */
+  --background: oklch(0.97 0.007 135);       /* off-white grass tint        */
+  --foreground: oklch(0.14 0.04 135);        /* deep forest green ink        */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.14 0.04 135);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.14 0.04 135);
+  --primary: oklch(0.54 0.17 135);           /* logo lime-green #5cb827      */
+  --primary-foreground: oklch(1 0 0);        /* white on green               */
+  --secondary: oklch(0.93 0.03 135);         /* light grass tint             */
+  --secondary-foreground: oklch(0.14 0.04 135);
+  --muted: oklch(0.94 0.015 135);
+  --muted-foreground: oklch(0.46 0.06 135);
+  --accent: oklch(0.91 0.04 135);
+  --accent-foreground: oklch(0.14 0.04 135);
+  --destructive: oklch(0.5 0.22 25);         /* crimson — live/FT red        */
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.88 0.03 135);
+  --input: oklch(0.92 0.015 135);
+  --ring: oklch(0.54 0.17 135);
+  --live: oklch(0.54 0.17 135);              /* live = primary green (grass) */
+  --finished: oklch(0.5 0.22 25);            /* finished = crimson           */
+  --chart-1: oklch(0.54 0.17 135);           /* green                        */
+  --chart-2: oklch(0.5 0.22 25);             /* red                          */
+  --chart-3: oklch(0.62 0.16 230);           /* blue                         */
+  --chart-4: oklch(0.75 0.18 70);            /* amber/orange (basketball)    */
+  --chart-5: oklch(0.65 0.14 300);           /* purple accent                */
+  --radius: 0.5rem;
+  --sidebar: oklch(0.14 0.04 135);           /* deep forest header/sidebar   */
+  --sidebar-foreground: oklch(0.97 0.007 135);
+  --sidebar-primary: oklch(0.67 0.2 135);    /* bright lime on dark          */
+  --sidebar-primary-foreground: oklch(0.14 0.04 135);
+  --sidebar-accent: oklch(0.22 0.05 135);
+  --sidebar-accent-foreground: oklch(0.97 0.007 135);
+  --sidebar-border: oklch(0.25 0.05 135);
+  --sidebar-ring: oklch(0.54 0.17 135);
+}
+
+.dark {
+  /* ── Sports Fixtures — logo-aligned green theme (dark) ── */
+  --background: oklch(0.1 0.03 135);         /* deep forest #0a1f0a          */
+  --foreground: oklch(0.95 0.02 135);        /* near-white with green hint   */
+  --card: oklch(0.14 0.04 135);              /* lifted forest card           */
+  --card-foreground: oklch(0.95 0.02 135);
+  --popover: oklch(0.14 0.04 135);
+  --popover-foreground: oklch(0.95 0.02 135);
+  --primary: oklch(0.67 0.2 135);            /* bright lime glow #6dbf2f     */
+  --primary-foreground: oklch(0.1 0.03 135); /* dark on bright green         */
+  --secondary: oklch(0.19 0.05 135);         /* inner ring #1a3d1a           */
+  --secondary-foreground: oklch(0.95 0.02 135);
+  --muted: oklch(0.19 0.04 135);
+  --muted-foreground: oklch(0.58 0.06 135);
+  --accent: oklch(0.22 0.05 135);
+  --accent-foreground: oklch(0.95 0.02 135);
+  --destructive: oklch(0.56 0.24 25);        /* brighter crimson in dark     */
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.25 0.05 135);
+  --input: oklch(0.22 0.04 135);
+  --ring: oklch(0.67 0.2 135);
+  --live: oklch(0.67 0.2 135);
+  --finished: oklch(0.56 0.24 25);
+  --chart-1: oklch(0.67 0.2 135);
+  --chart-2: oklch(0.56 0.24 25);
+  --chart-3: oklch(0.62 0.18 230);
+  --chart-4: oklch(0.75 0.2 70);
+  --chart-5: oklch(0.65 0.16 300);
+  --sidebar: oklch(0.08 0.03 135);
+  --sidebar-foreground: oklch(0.95 0.02 135);
+  --sidebar-primary: oklch(0.67 0.2 135);
+  --sidebar-primary-foreground: oklch(0.1 0.03 135);
+  --sidebar-accent: oklch(0.19 0.05 135);
+  --sidebar-accent-foreground: oklch(0.95 0.02 135);
+  --sidebar-border: oklch(0.22 0.05 135);
+  --sidebar-ring: oklch(0.67 0.2 135);
+}
+
+@theme inline {
+  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
+  --font-sans: "Geist", "Geist Fallback";
+  --font-mono: "Geist Mono", "Geist Mono Fallback";
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-live: var(--live);
+  --color-finished: var(--finished);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ── Disco Mode ─────────────────────────────────────────────────────────── */
+.disco {
+  --disco-hue: 330;
+  --disco-sat: 0.28;
+  --background:  oklch(0.07 0.03 var(--disco-hue));
+  --foreground:  oklch(0.97 0.02 var(--disco-hue));
+  --card:        oklch(0.12 0.06 var(--disco-hue));
+  --card-foreground: oklch(0.97 0.02 var(--disco-hue));
+  --popover:     oklch(0.12 0.06 var(--disco-hue));
+  --popover-foreground: oklch(0.97 0.02 var(--disco-hue));
+  --primary:     oklch(0.65 var(--disco-sat) var(--disco-hue));
+  --primary-foreground: oklch(0.07 0.02 var(--disco-hue));
+  --secondary:   oklch(0.17 0.08 var(--disco-hue));
+  --secondary-foreground: oklch(0.97 0.02 var(--disco-hue));
+  --muted:       oklch(0.17 0.06 var(--disco-hue));
+  --muted-foreground: oklch(0.6 0.1 var(--disco-hue));
+  --accent:      oklch(0.22 0.1 var(--disco-hue));
+  --accent-foreground: oklch(0.97 0.02 var(--disco-hue));
+  --border:      oklch(0.28 0.1 var(--disco-hue));
+  --input:       oklch(0.20 0.07 var(--disco-hue));
+  --ring:        oklch(0.65 var(--disco-sat) var(--disco-hue));
+  --live:        oklch(0.70 var(--disco-sat) var(--disco-hue));
+  --sidebar:     oklch(0.05 0.04 var(--disco-hue));
+  --sidebar-foreground: oklch(0.97 0.02 var(--disco-hue));
+  --sidebar-primary: oklch(0.65 var(--disco-sat) var(--disco-hue));
+  --sidebar-border: oklch(0.22 0.08 var(--disco-hue));
+}
+
+/* ── Section 15.C — Score pulse (real score changes only) ───────────────── */
+/* animate-ping-once: brief scale-up flash, fires once, no loop.
+   Applied by live-ticker.tsx PrimaryTickerRail only when a score diff is detected. */
+@keyframes ping-once {
+  0%   { transform: scale(1);    opacity: 1; }
+  50%  { transform: scale(1.35); opacity: 0.9; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+
+.animate-ping-once {
+  animation: ping-once 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ── Quirk PopIn — all mood keyframes ───────────────────────────────────── */
+
+/* 3D ball burst — small to big, punch through screen */
+@keyframes ball-burst {
+  0%   { transform: scale(0)    rotate(0deg)   translateZ(0); opacity: 0;   }
+  15%  { transform: scale(0.6)  rotate(20deg)  translateZ(0); opacity: 1;   }
+  60%  { transform: scale(1.4)  rotate(180deg) translateZ(0); opacity: 1;   }
+  80%  { transform: scale(1.25) rotate(260deg) translateZ(0); opacity: 1;   }
+  100% { transform: scale(0)    rotate(360deg) translateZ(0); opacity: 0;   }
+}
+
+/* Ball spin while held at full size */
+@keyframes ball-spin {
+  from { transform: scale(1.3) rotate(0deg); }
+  to   { transform: scale(1.3) rotate(360deg); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Tasmanian devil — ultra-fast full spin */
+@keyframes quirk-taz {
+  from { transform: rotate(0deg) scale(1.15); }
+  to   { transform: rotate(360deg) scale(1.15); }
+}
+
+/* Baseball bat / sport swing — side arc */
+@keyframes quirk-swing {
+  0%   { transform: rotate(-28deg) scale(1); }
+  100% { transform: rotate(22deg)  scale(1.06); }
+}
+
+/* Happy bounce — vertical pop */
+@keyframes quirk-bounce {
+  0%   { transform: translateY(0px)  scale(1); }
+  100% { transform: translateY(-9px) scale(1.1); }
+}
+
+/* Chilled idle — slow gentle sway */
+@keyframes quirk-chilled {
+  0%, 100% { transform: rotate(-3deg) scale(1); }
+  50%       { transform: rotate(3deg)  scale(1.03); }
+}
+
+/* Legacy wobble kept for onboarding page */
+@keyframes quirk-wobble {
+  0%, 100% { transform: rotate(-4deg) scale(1); }
+  50%       { transform: rotate(4deg)  scale(1.05); }
+}
+
+@keyframes disco-bg {
+  0%   { background-position: 0% 50% }
+  50%  { background-position: 100% 50% }
+  100% { background-position: 0% 50% }
+}
+
+@keyframes strobe-flash {
+  0%, 100% { opacity: 0 }
+  5%, 95%  { opacity: 0.06 }
+  50%      { opacity: 0.12 }
+}
+
+@keyframes disco-ball-spin {
+  from { transform: rotate(0deg) }
+  to   { transform: rotate(360deg) }
+}
+
+@keyframes light-bar-pulse {
+  0%, 100% { opacity: 0.7; transform: scaleX(1) }
+  50%      { opacity: 1;   transform: scaleX(1.03) }
+}
+
+.disco body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(
+    ellipse at 20% 30%,
+    oklch(0.5 0.3 calc(var(--disco-hue) + 0)) 0%,
+    transparent 55%
+  ),
+  radial-gradient(
+    ellipse at 80% 70%,
+    oklch(0.5 0.3 calc(var(--disco-hue) + 120)) 0%,
+    transparent 55%
+  ),
+  radial-gradient(
+    ellipse at 50% 10%,
+    oklch(0.5 0.3 calc(var(--disco-hue) + 240)) 0%,
+    transparent 55%
+  );
+  background-size: 200% 200%;
+  animation: disco-bg 4s ease infinite;
+  opacity: 0.18;
+}
+
+.disco body::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  animation: strobe-flash 0.8s linear infinite;
+  background: white;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Mobile-optimized scrollbar */
+  ::-webkit-scrollbar {
+    height: 3px;
+    width: 3px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 2px;
+  }
+
+  /* Prevent text selection on mobile for better UX */
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Hide scrollbar for horizontal scrolling tabs */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Add wiggle animation for draggable button delete mode */
+  @keyframes wiggle {
+    0%,
+    100% {
+      transform: rotate(-2deg);
+    }
+    50% {
+      transform: rotate(2deg);
+    }
+  }
+
+  .animate-wiggle {
+    animation: wiggle 0.3s ease-in-out infinite;
+  }
+
+  /* Add smooth fade-in and slide animations for onboarding */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-in-from-bottom {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .animate-in {
+    animation-fill-mode: both;
+  }
+
+  .fade-in {
+    animation-name: fade-in;
+  }
+
+  .slide-in-from-bottom-4 {
+    animation-name: slide-in-from-bottom;
+  }
+
+  .duration-700 {
+    animation-duration: 700ms;
+  }
+
+  .duration-1000 {
+    animation-duration: 1000ms;
+  }
+
+  .delay-150 {
+    animation-delay: 150ms;
+  }
+
+  .delay-300 {
+    animation-delay: 300ms;
+  }
+
+  .delay-500 {
+    animation-delay: 500ms;
+  }
+
+  .delay-700 {
+    animation-delay: 700ms;
+  }
+}
