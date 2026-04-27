@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.DATABASE_URL!)
+const SF_API_URL = (process.env.SF_API_URL || "https://staging-api.sportsfixtures.net").replace(/\/$/, "")
+const SF_API_TOKEN = process.env.SF_API_TOKEN || ""
+const strapiHeaders = {
+  "Content-Type": "application/json",
+  ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
+}
 
 function getDeviceToken(req: NextRequest): string | null {
   return req.headers.get("x-device-token") || null
@@ -13,13 +17,22 @@ export async function GET(req: NextRequest) {
   if (!token) return NextResponse.json({ error: "Missing x-device-token" }, { status: 400 })
 
   try {
-    const rows = await sql`
-      SELECT entity_type, entity_id, entity_name, entity_logo, entity_meta, created_at
-      FROM favourites
-      WHERE device_token = ${token}
-      ORDER BY created_at DESC
-    `
-    return NextResponse.json({ favourites: rows })
+    const res = await fetch(
+      `${SF_API_URL}/api/user-favorites/device/${token}`,
+      { headers: strapiHeaders, cache: "no-store" }
+    )
+    if (!res.ok) return NextResponse.json({ favourites: [] })
+    const data = await res.json()
+    // Map Strapi format back to PWA format
+    const favourites = (data.data || []).map((f: any) => ({
+      entity_type: f.entityType,
+      entity_id: f.entityId,
+      entity_name: f.entityName || null,
+      entity_logo: f.entityLogo || null,
+      entity_meta: f.entityMeta || {},
+      created_at: f.createdAt,
+    }))
+    return NextResponse.json({ favourites })
   } catch (err) {
     console.error("[favourites GET]", err)
     return NextResponse.json({ error: "Failed to fetch favourites" }, { status: 500 })
@@ -38,29 +51,40 @@ export async function POST(req: NextRequest) {
     if (Array.isArray(body.teams)) {
       for (const team of body.teams) {
         if (!team.id) continue
-        await sql`
-          INSERT INTO favourites (device_token, entity_type, entity_id, entity_name, entity_logo, entity_meta)
-          VALUES (${token}, 'team', ${String(team.id)}, ${team.name || null}, ${team.logo || null}, '{}')
-          ON CONFLICT (device_token, entity_type, entity_id) DO NOTHING
-        `
+        await fetch(`${SF_API_URL}/api/user-favorites/device`, {
+          method: "POST",
+          headers: strapiHeaders,
+          body: JSON.stringify({
+            deviceToken: token,
+            entityType: "team",
+            entityId: String(team.id),
+            entityName: team.name || null,
+            entityLogo: team.logo || null,
+          }),
+        })
       }
       return NextResponse.json({ success: true, count: body.teams.length })
     }
 
-    // Single mode: { entity_type, entity_id, entity_name, ... }
+    // Single mode
     const { entity_type, entity_id, entity_name, entity_logo, entity_meta = {} } = body
     if (!entity_type || !entity_id) {
       return NextResponse.json({ error: "entity_type and entity_id required" }, { status: 400 })
     }
 
-    await sql`
-      INSERT INTO favourites (device_token, entity_type, entity_id, entity_name, entity_logo, entity_meta)
-      VALUES (${token}, ${entity_type}, ${entity_id}, ${entity_name || null}, ${entity_logo || null}, ${JSON.stringify(entity_meta)})
-      ON CONFLICT (device_token, entity_type, entity_id) DO UPDATE
-        SET entity_name = EXCLUDED.entity_name,
-            entity_logo = EXCLUDED.entity_logo,
-            entity_meta = EXCLUDED.entity_meta
-    `
+    await fetch(`${SF_API_URL}/api/user-favorites/device`, {
+      method: "POST",
+      headers: strapiHeaders,
+      body: JSON.stringify({
+        deviceToken: token,
+        entityType: entity_type,
+        entityId: entity_id,
+        entityName: entity_name || null,
+        entityLogo: entity_logo || null,
+        entityMeta: entity_meta,
+      }),
+    })
+
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[favourites POST]", err)
@@ -79,12 +103,11 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "entity_type and entity_id required" }, { status: 400 })
     }
 
-    await sql`
-      DELETE FROM favourites
-      WHERE device_token = ${token}
-        AND entity_type = ${entity_type}
-        AND entity_id = ${entity_id}
-    `
+    await fetch(
+      `${SF_API_URL}/api/user-favorites/device/${token}/${entity_type}/${entity_id}`,
+      { method: "DELETE", headers: strapiHeaders }
+    )
+
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[favourites DELETE]", err)
