@@ -7,7 +7,8 @@ import { getPattayaVenues } from "@/lib/venues-pattaya"
  * Merges live Strapi venues (when available) with the Pattaya dataset.
  */
 export async function GET() {
-  const localVenues = getPattayaVenues().map((v) => ({
+  const venues = await getPattayaVenues()
+  const localVenues = venues.map((v) => ({
     slug: v.slug ?? v.id,
     updatedAt: new Date().toISOString(),
   }))

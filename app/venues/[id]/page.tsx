@@ -117,7 +117,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (STATIC_ROUTES[idOrSlug]) return {}
 
   const raw = SF_API_TOKEN ? await resolveVenue(idOrSlug) : null
-  const venue: VenueCard | null = raw ? normaliseVenue(raw) : (getVenueBySlug(idOrSlug) ?? null)
+  const venue: VenueCard | null = raw ? normaliseVenue(raw) : (await getVenueBySlug(idOrSlug) ?? null)
   if (!venue) return {}
 
   const name        = getVenueName(venue)
@@ -165,7 +165,7 @@ export default async function VenueDetailPage({ params }: Props) {
   const raw = SF_API_TOKEN ? await resolveVenue(idOrSlug) : null
   const venue: VenueCard = raw
     ? normaliseVenue(raw)
-    : (getVenueBySlug(idOrSlug) ?? notFound())
+    : (await getVenueBySlug(idOrSlug) ?? notFound())
 
   // Canonical derived variables
   const venueName        = getVenueName(venue)

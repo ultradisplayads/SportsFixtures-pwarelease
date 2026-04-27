@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     if (!rawVenues || rawVenues.length === 0) {
       return NextResponse.json(
         {
-          items: getPattayaVenues(),
+          items:[],
           locationUsed: false,
           filters: { radiusKm: radius, sport, competitionId, eventId },
           generatedAt: new Date().toISOString(),

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { normaliseVenue } from "@/lib/venue-discovery"
 import { makeSuccessEnvelope, makeEmptyEnvelope } from "@/lib/contracts"
-import { getPattayaVenues } from "@/lib/venues-pattaya"
 import {
   fetchControlPlaneSnapshot,
   getVenueBoostScore,
@@ -14,11 +13,21 @@ const SF_API_URL = (process.env.SF_API_URL || "https://staging-api.sportsfixture
   .replace(/\/$/, "")
 const SF_API_TOKEN = process.env.SF_API_TOKEN || ""
 
+function getDefaultPhoto(category: string): string {
+  if (category?.includes("sports_bar")) return "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=800&q=80"
+  if (category?.includes("rooftop")) return "https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800&q=80"
+  if (category?.includes("bar")) return "https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=800&q=80"
+  if (category?.includes("restaurant")) return "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80"
+  if (category?.includes("cafe")) return "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800&q=80"
+  if (category?.includes("pub")) return "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=800&q=80"
+  return "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=800&q=80"
+}
+
 async function fetchSFVenues(qs: URLSearchParams): Promise<any[]> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
   try {
-    const res = await fetch(`${SF_API_URL}/api/venues?${qs}`, {
+    const res = await fetch(`${SF_API_URL}/api/watch-venues?${qs}`, {
       cache: "no-store",
       signal: controller.signal,
       headers: {
@@ -67,8 +76,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (eventId) sfQs.set("filters[showingEventIds][$contains]", eventId)
 
   try {
-    // Load control-plane snapshot — never let this throw; degrade gracefully.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let venueBoosts: any[] = []
     try {
       const snapshot = await fetchControlPlaneSnapshot()
@@ -77,17 +84,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       // Strapi unavailable — continue with no boosts applied
     }
 
-    // Skip SF API entirely when no token is configured
-    const rawVenues = SF_API_TOKEN ? await fetchSFVenues(sfQs) : []
+    const rawVenues = await fetchSFVenues(sfQs)
 
-    // No live API data — serve the Pattaya venue dataset.
+    // No live API data — return empty, no hardcoded fallback
     if (!rawVenues || rawVenues.length === 0) {
-      const cards = getPattayaVenues()
-      const sports = Array.from(new Set(cards.flatMap((c) => c.sports ?? [])))
-      const facilities = Array.from(new Set(cards.flatMap((c) => c.facilities ?? [])))
       const payload: VenueDiscoveryResponse = {
-        items: cards,
-        filters: { sports, facilities },
+        items: [],
+        filters: { sports: [], facilities: [] },
         locationUsed: false,
       }
       const envelope: NormalizedEnvelope<VenueDiscoveryResponse> = makeSuccessEnvelope({
@@ -95,7 +98,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         source: "strapi",
         fetchedAt,
         maxAgeSeconds: 60,
-        confidence: "high",
+        confidence: "low",
       })
       return NextResponse.json(envelope)
     }
@@ -103,8 +106,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const cards: VenueCard[] = rawVenues
       .map((raw) => {
         const venueId = String(raw.id ?? "")
-        // Apply operator boost rules — additive to organic scoring via editorialBoost/sponsored flags.
-        // sponsorDisclosure=true triggers disclosure pill rendering in the UI.
         const { boosted, sponsorDisclosure } = getVenueBoostScore(venueBoosts, venueId, {
           sport,
           competitionId,
@@ -113,7 +114,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         const boostedRaw = boosted
           ? { ...raw, editorialBoost: true, sponsored: raw.sponsored || sponsorDisclosure }
           : raw
-        return normaliseVenue(boostedRaw, { userLat, userLng, followedIds, eventId, competitionId, sport })
+        return {
+          ...boostedRaw,
+          id: String(boostedRaw.id ?? ""),
+          photoUrl: boostedRaw.photoUrl || getDefaultPhoto(boostedRaw.primaryCategory),
+          sports: boostedRaw.sports_supported
+            ? boostedRaw.sports_supported.split(";").map((s: string) => s.trim()).filter(Boolean)
+            : [],
+          facilities: [],
+          offers: [],
+          offerCount: 0,
+          showingEventIds: [],
+          reasons: [],
+          score: boostedRaw.sponsored ? 10 : 0,
+          showingNow: boostedRaw.sports_bar_signal === "Strong",
+        }
       })
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
 
@@ -131,21 +146,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       data: payload,
       source: "strapi",
       fetchedAt,
-      maxAgeSeconds: 300, // venue discovery stales after 5 minutes
+      maxAgeSeconds: 300,
       confidence: cards.length > 0 ? "high" : "low",
     })
 
     return NextResponse.json(envelope)
   } catch (err) {
-    console.error("[venues/discovery] unexpected error — serving fallback venues:", err)
-    // Serve Pattaya venues even on unexpected errors so the page is never blank
-    const cards = getPattayaVenues()
+    console.error("[venues/discovery] unexpected error:", err)
+    // Return empty on error — no hardcoded fallback
     const payload: VenueDiscoveryResponse = {
-      items: cards,
-      filters: {
-        sports: Array.from(new Set(cards.flatMap((c) => c.sports ?? []))),
-        facilities: Array.from(new Set(cards.flatMap((c) => c.facilities ?? []))),
-      },
+      items: [],
+      filters: { sports: [], facilities: [] },
       locationUsed: false,
     }
     const envelope: NormalizedEnvelope<VenueDiscoveryResponse> = makeSuccessEnvelope({
@@ -153,7 +164,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       source: "strapi",
       fetchedAt: new Date().toISOString(),
       maxAgeSeconds: 60,
-      confidence: "high",
+      confidence: "low",
     })
     return NextResponse.json(envelope)
   }

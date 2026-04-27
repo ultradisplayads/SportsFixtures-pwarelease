@@ -10,7 +10,7 @@ export async function GET(
   const { id } = await params
 
   // Try slug lookup first, then numeric id scan
-  const bySlug = getVenueBySlug(id)
+  const bySlug = await getVenueBySlug(id)
   if (bySlug) {
     return NextResponse.json(bySlug, {
       headers: { "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600" },
@@ -19,7 +19,7 @@ export async function GET(
 
   // Numeric id fallback — scan all venues
   if (/^\d+$/.test(id)) {
-    const all = getPattayaVenues()
+    const all =await getPattayaVenues()
     const byId = all.find((v) => String(v.id) === id)
     if (byId) {
       return NextResponse.json(byId, {
