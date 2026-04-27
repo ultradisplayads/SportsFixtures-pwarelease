@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+
+const SF_API_URL = (process.env.SF_API_URL || "https://staging-api.sportsfixtures.net").replace(/\/$/, "")
+const SF_API_TOKEN = process.env.SF_API_TOKEN || ""
 
 export async function POST(req: Request) {
   try {
@@ -10,20 +12,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "eventType required" }, { status: 400 })
     }
 
-    const sql = neon(process.env.DATABASE_URL!)
-
-    await sql`
-      INSERT INTO analytics_events (event_type, device_token, user_id, page, entity_type, entity_id, meta)
-      VALUES (
-        ${eventType},
-        ${deviceToken ?? null},
-        ${userId ?? null},
-        ${page ?? null},
-        ${entityType ?? null},
-        ${entityId ?? null},
-        ${meta ? JSON.stringify(meta) : null}
-      )
-    `
+    await fetch(`${SF_API_URL}/api/analytics-events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
+      },
+      body: JSON.stringify({
+        data: {
+          event_type: eventType,
+          device_token: deviceToken ?? null,
+          user_id: userId ?? null,
+          page: page ?? null,
+          entity_type: entityType ?? null,
+          entity_id: entityId ?? null,
+          meta: meta ?? null,
+        },
+      }),
+    })
 
     return NextResponse.json({ success: true })
   } catch (err: any) {
