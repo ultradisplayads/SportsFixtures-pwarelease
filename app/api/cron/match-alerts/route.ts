@@ -1,30 +1,35 @@
 import { NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
 import { buildNotificationUrl } from "@/lib/alerts"
 
 const WINDOW_MIN = 30
 const WINDOW_MAX = 35
 
+const SF_API_URL = (process.env.SF_API_URL || "http://localhost:1337").replace(/\/$/, "")
+const SF_API_TOKEN = process.env.SF_API_TOKEN || ""
+const strapiHeaders = {
+  "Content-Type": "application/json",
+  ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
+}
+
 export async function GET(request: Request) {
-  // Verify Vercel cron secret
   const auth = request.headers.get("authorization")
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   try {
-    const sql = neon(process.env.DATABASE_URL!)
+    // Get active push subscriptions with their followed teams from Strapi
+    const subsRes = await fetch(`${SF_API_URL}/api/push-subscriptions/with-teams`, {
+      headers: strapiHeaders,
+      cache: "no-store",
+    })
 
-    // Get all active push subscriptions with their followed teams
-    const subs = await sql`
-      SELECT ps.endpoint, ps.p256dh, ps.auth, ps.device_token,
-             f.entity_id AS team_id, f.entity_name AS team_name
-      FROM push_subscriptions ps
-      JOIN favourites f ON f.device_token = ps.device_token
-      WHERE ps.is_active = true
-        AND f.entity_type = 'team'
-        AND ps.pref_match_start = true
-    `
+    if (!subsRes.ok) {
+      return NextResponse.json({ sent: 0, message: "Failed to fetch subscriptions" })
+    }
+
+    const subsData = await subsRes.json()
+    const subs = subsData.data || []
 
     if (!subs.length) {
       return NextResponse.json({ sent: 0, message: "No active subscriptions" })
@@ -33,7 +38,7 @@ export async function GET(request: Request) {
     // Get upcoming events in the 30–35 min window from TheSportsDB
     const now = new Date()
     const windowStart = new Date(now.getTime() + WINDOW_MIN * 60 * 1000)
-    const windowEnd   = new Date(now.getTime() + WINDOW_MAX * 60 * 1000)
+    const windowEnd = new Date(now.getTime() + WINDOW_MAX * 60 * 1000)
     const dateStr = now.toISOString().split("T")[0]
 
     const apiKey = process.env.SPORTSDB_API_KEY || "3"
@@ -44,7 +49,6 @@ export async function GET(request: Request) {
     const tsdbData = await tsdbRes.json()
     const events: Record<string, string>[] = tsdbData?.events || []
 
-    // Filter to events starting in our window
     const upcoming = events.filter((e) => {
       if (!e.strTime || !e.dateEvent) return false
       const eventTime = new Date(`${e.dateEvent}T${e.strTime}Z`)
@@ -68,7 +72,6 @@ export async function GET(request: Request) {
       )
       if (!match) continue
 
-      // Use canonical URL builder — no send path should invent its own deep link
       const deepLink = buildNotificationUrl({
         category: "match_reminder",
         eventId: match.idEvent,
@@ -96,7 +99,7 @@ export async function GET(request: Request) {
         })
         sent++
       } catch {
-        // individual send failure — continue to next sub
+        // individual send failure — continue
       }
     }
 
