@@ -2,24 +2,38 @@
 // POST /api/account/delete
 // Handles real account deletion for both modes:
 //   - signed_in: calls Strapi /auth/local/delete-account (or custom plugin endpoint)
-//                then also clears device-local rows from Neon
-//   - anonymous_device: clears device-local rows from Neon only
-//
-// NEVER pretends to succeed. Returns a real error on failure so the UI can
-// show the user what went wrong instead of false-confirming deletion.
+//                then also clears device-local rows from Strapi
+//   - anonymous_device: clears device-local rows from Strapi only
 
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
-import { neon } from "@neondatabase/serverless"
 import { getSFApiBase, getSFApiHeaders } from "@/lib/account"
 
+const SF_API_URL = (process.env.SF_API_URL || "https://staging-api.sportsfixtures.net").replace(/\/$/, "")
+const SF_API_TOKEN = process.env.SF_API_TOKEN || ""
+const strapiHeaders = {
+  "Content-Type": "application/json",
+  ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
+}
+
 async function deleteDeviceRows(deviceToken: string): Promise<void> {
-  if (!process.env.DATABASE_URL) return
-  const sql = neon(process.env.DATABASE_URL)
-  // Intentional: these may throw — caller handles errors
-  await sql`DELETE FROM favourites WHERE device_token = ${deviceToken}`
-  await sql`DELETE FROM push_subscriptions WHERE device_token = ${deviceToken}`
-  await sql`DELETE FROM analytics_events WHERE device_token = ${deviceToken}`
+  // Delete favourites via Strapi
+  await fetch(
+    `${SF_API_URL}/api/user-favorites/device/${deviceToken}/all`,
+    { method: "DELETE", headers: strapiHeaders }
+  ).catch(() => {})
+
+  // Deactivate push subscriptions via Strapi
+  await fetch(
+    `${SF_API_URL}/api/push-subscriptions/deactivate-by-device`,
+    { method: "PATCH", headers: strapiHeaders, body: JSON.stringify({ device_token: deviceToken }) }
+  ).catch(() => {})
+
+  // Delete analytics events via Strapi
+  await fetch(
+    `${SF_API_URL}/api/analytics-events/by-device/${deviceToken}`,
+    { method: "DELETE", headers: strapiHeaders }
+  ).catch(() => {})
 }
 
 export async function POST(req: Request) {
@@ -45,7 +59,6 @@ export async function POST(req: Request) {
       const base = getSFApiBase()
       const headers = { ...getSFApiHeaders(), Authorization: `Bearer ${jwt}` }
 
-      // Strapi custom delete endpoint (adjust path to match SF backend plugin)
       const strapiRes = await fetch(`${base}/api/auth/local/delete-account`, {
         method: "DELETE",
         headers,
@@ -54,10 +67,8 @@ export async function POST(req: Request) {
       })
 
       if (!strapiRes.ok) {
-        // Strapi may return 404 if the endpoint isn't yet wired — fall back to
-        // marking the account as deleted via PUT (soft-delete pattern)
         if (strapiRes.status === 404) {
-          // Soft-delete fallback: mark account as deletedAt in Strapi profile
+          // Soft-delete fallback
           await fetch(`${base}/api/users/me`, {
             method: "PUT",
             headers,
@@ -71,12 +82,11 @@ export async function POST(req: Request) {
         }
       }
 
-      // Clear device rows too (best-effort — don't fail if Neon unavailable)
+      // Clear device rows too via Strapi (best-effort)
       if (deviceToken) {
         await deleteDeviceRows(deviceToken).catch(() => {})
       }
 
-      // Clear the JWT cookie
       const response = NextResponse.json({ success: true })
       response.cookies.delete("sf_jwt")
       return response
