@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, Suspense } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
 import { ExternalLink, MonitorSmartphone, X } from "lucide-react"
 
@@ -20,7 +20,7 @@ function setDismissUntil(days: number) {
   window.localStorage.setItem(PREFERENCE_KEY, String(until))
 }
 
-export function OpenFullSiteButton() {
+function OpenFullSiteButtonInner() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [visible, setVisible] = useState(false)
@@ -85,8 +85,8 @@ export function OpenFullSiteButton() {
               : "The compact PWA stays phone-first. On wider screens, the full site usually gives you a better browsing layout."}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <a
-              href={href}
+            
+             <a href={href}
               className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground"
             >
               Open full site
@@ -117,5 +117,13 @@ export function OpenFullSiteButton() {
         </button>
       </div>
     </div>
+  )
+}
+
+export function OpenFullSiteButton() {
+  return (
+    <Suspense fallback={null}>
+      <OpenFullSiteButtonInner />
+    </Suspense>
   )
 }

@@ -24,7 +24,7 @@ function getIdLikeValue(row: SeoRouteRow): string | null {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: SITE_URL,               changeFrequency: "hourly",   priority: 1 },
-    { url: `${SITE_URL}/live`,     changeFrequency: "minutely", priority: 0.95 },
+    { url: `${SITE_URL}/live`, changeFrequency: "always", priority: 0.95 },
     { url: `${SITE_URL}/fixtures`, changeFrequency: "hourly",   priority: 0.9 },
     { url: `${SITE_URL}/results`,  changeFrequency: "hourly",   priority: 0.9 },
     { url: `${SITE_URL}/news`,     changeFrequency: "hourly",   priority: 0.9 },

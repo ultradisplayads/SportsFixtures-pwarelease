@@ -111,7 +111,7 @@ export async function generateMetadata({
 
   const teamName = team.strTeam?.trim() || "Team"
   const title =
-    team.seo?.seo_title_override?.trim() || teamTitle(teamName, team.strLeague ?? undefined)
+  team.seo?.seo_title_override?.trim() || teamTitle(teamName)
 
   const description =
     team.seo?.seo_description_override?.trim() ||

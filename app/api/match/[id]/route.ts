@@ -23,14 +23,10 @@ export async function GET(
         ? event.awayTeam?.name ?? event.strAwayTeam ?? null
         : event.strAwayTeam ?? null
 
-    const tvChannels: string[] =
-      Array.isArray(event.tvChannels)
-        ? event.tvChannels.map((ch: unknown) =>
-            typeof ch === "object" && ch !== null
-              ? (ch as Record<string, unknown>).name ?? String(ch)
-              : String(ch),
-          )
-        : []
+        const tvChannels: string[] =
+        Array.isArray(event.tvEvents)
+          ? event.tvEvents.map((ch) => ch.channel ?? ch.strChannel ?? "")
+          : []
 
     const payload = {
       idEvent: event.id ?? event.idEvent ?? id,
@@ -52,15 +48,12 @@ export async function GET(
         ? `${event.dateEvent}${event.strTime ? "T" + event.strTime : ""}`
         : null,
       endsAt: null,
-      venueName:
-        typeof event.venue === "object"
-          ? event.venue?.name ?? event.strVenue ?? null
-          : event.strVenue ?? null,
+      venueName: event.strVenue ?? null,
       venue_id:
         typeof event.venue === "object" ? event.venue?.id ?? null : null,
       venueAddress: null,
       tvChannels,
-      image: event.strThumb ?? event.strBanner ?? null,
+      image: event.strThumb ?? null,
       summary: null,
       published_at: null,
       updated_at: null,

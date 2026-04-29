@@ -100,6 +100,7 @@ export interface SFEvent {
   strThumb?: string | null
   strVideo?: string | null
   strVenue?: string | null
+  venue?: { id?: string | number; name?: string } | null  // ← add this
   tvEvents?: SFTVEvent[]
 }
 

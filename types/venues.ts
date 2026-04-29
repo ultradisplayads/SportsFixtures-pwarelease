@@ -40,6 +40,7 @@ export type VenueCard = {
   screenCount?: number
   capacity?: number
   rating?: number
+  description?: string | null
   // Rich ratings breakdown
   tripadvisorRating?: number
   tripadvisorReviewCount?: number

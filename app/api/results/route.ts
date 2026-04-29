@@ -39,8 +39,8 @@ export async function GET(req: NextRequest) {
       normalizeResultRow({
         id:              e.id,
         sport:           e.sport?.strSport ?? e.sport?.name ?? null,
-        competitionId:   e.idLeague ?? null,
-        competitionName: e.strLeague ?? (e.league as any)?.name ?? null,
+        competitionId:   e.league?.idLeague ?? null,
+        competitionName: e.league?.strLeague ?? e.league?.name ?? null,
         homeTeamName:    e.strHomeTeam ?? (e as any).homeTeam ?? null,
         awayTeamName:    e.strAwayTeam ?? (e as any).awayTeam ?? null,
         homeScore:       e.intHomeScore ?? null,
