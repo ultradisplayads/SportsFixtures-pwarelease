@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { Menu, ChevronRight, Bell, Calendar, User, GripVertical, CheckCheck, Trash2, Crown, Star, MapPin } from "lucide-react"
+import { Menu, ChevronRight, Bell, Calendar, User, GripVertical, CheckCheck, Trash2, Crown, Star, MapPin, LogOut } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import Link from "next/link"
 import { usePushProvider } from "./notification-provider"
@@ -14,6 +14,7 @@ import { notificationStore, type AppNotification } from "@/lib/notification-stor
 import { useSubscription } from "@/lib/use-subscription"
 import { isLaunchPassActive, LAUNCH_PASS_EXPIRY } from "@/lib/subscription-manager"
 import { useNotifications } from "@/hooks/use-notifications"
+import { useAuth } from "@/lib/auth-context"
 
 interface MenuItem {
   id: string
@@ -24,31 +25,33 @@ interface MenuItem {
 
 const DEFAULT_MENU_ITEMS: MenuItem[] = [
   // Quick Links
-  { id: "home",     label: "Home",           href: "/",       section: "Quick Links" },
-  { id: "live",     label: "Live Scores",    href: "/live",   section: "Quick Links" },
+  { id: "home",     label: "Home",           href: "/",         section: "Quick Links" },
+  { id: "live",     label: "Live Scores",    href: "/live",     section: "Quick Links" },
   { id: "fixtures", label: "Fixtures",       href: "/fixtures", section: "Quick Links" },
-  { id: "results",  label: "Results",        href: "/results", section: "Quick Links" },
-  { id: "tv",       label: "TV Guide",       href: "/tv",     section: "Quick Links" },
-  { id: "news",     label: "News",           href: "/news",   section: "Quick Links" },
+  { id: "results",  label: "Results",        href: "/results",  section: "Quick Links" },
+  { id: "tv",       label: "TV Guide",       href: "/tv",       section: "Quick Links" },
+  { id: "news",     label: "News",           href: "/news",     section: "Quick Links" },
   // Watch Live
-  { id: "venues", label: "Find Sports Bars Near Me", href: "/venues", section: "Watch Live" },
-  { id: "sportsbarz", label: "SportsBarz.co", href: "https://sportsbarz.co", section: "Watch Live" },
-  { id: "gfp", label: "GreatFoodPlaces.com", href: "https://greatfoodplaces.com", section: "Watch Live" },
-  { id: "venue-signup", label: "Venue Owner Sign Up", href: "/venues/owner-signup", section: "Watch Live" },
+  { id: "venues",       label: "Find Sports Bars Near Me", href: "/venues",              section: "Watch Live" },
+  { id: "sportsbarz",   label: "SportsBarz.co",            href: "https://sportsbarz.co", section: "Watch Live" },
+  { id: "gfp",          label: "GreatFoodPlaces.com",      href: "https://greatfoodplaces.com", section: "Watch Live" },
+  { id: "venue-signup", label: "Venue Owner Sign Up",      href: "/venues/owner-signup", section: "Watch Live" },
   // Local Leagues
-  { id: "pool", label: "Pool Leagues & Tables", href: "/local-leagues/pool", section: "Local Leagues" },
+  { id: "pool",  label: "Pool Leagues & Tables",  href: "/local-leagues/pool",  section: "Local Leagues" },
   { id: "darts", label: "Darts Leagues & Tables", href: "/local-leagues/darts", section: "Local Leagues" },
 ]
 
 export function HeaderMenu() {
   const { sendLocalNotification, permission } = usePushProvider()
   const { tier, effectiveTier, isFounderVip } = useSubscription()
+  const { user, isAuthenticated, signOut } = useAuth()
   const launchPassActive = isLaunchPassActive()
   const isBronze = tier === "bronze"
   const isGold = effectiveTier === "gold" && tier !== "founder_vip"
-  const expiryFormatted = LAUNCH_PASS_EXPIRY.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+  const expiryFormatted = LAUNCH_PASS_EXPIRY.toLocaleDateString("en-GB", {
+    day: "numeric", month: "short", year: "numeric",
+  })
 
-  // DB-backed notification history
   const {
     history: dbHistory,
     unreadCount: dbUnreadCount,
@@ -57,13 +60,12 @@ export function HeaderMenu() {
     loaded: dbLoaded,
   } = useNotifications()
 
-  // Transient in-session delivery items (not persisted, supplementary only)
   const [localNotifications, setLocalNotifications] = useState<AppNotification[]>([])
   const [menuItems, setMenuItems] = useState<MenuItem[]>(DEFAULT_MENU_ITEMS)
   const [draggedItem, setDraggedItem] = useState<string | null>(null)
   const [isEditMode, setIsEditMode] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
 
-  // Listen for local (in-memory) notifications
   useEffect(() => {
     setLocalNotifications(notificationStore.getAll())
     const handler = () => setLocalNotifications(notificationStore.getAll())
@@ -71,9 +73,6 @@ export function HeaderMenu() {
     return () => window.removeEventListener("sf:notification", handler)
   }, [])
 
-  // unreadCount: DB history is the primary source of truth.
-  // Transient local items are added only as a supplementary count.
-  // The bell badge must never blend two permanent histories silently.
   const localUnread = localNotifications.filter((n) => !n.read).length
   const unreadCount = dbUnreadCount + localUnread
 
@@ -101,19 +100,23 @@ export function HeaderMenu() {
     dbMarkRead(id)
   }
 
-  // Load saved menu order from localStorage
+  const handleSignOut = async () => {
+    triggerHaptic("medium")
+    setSigningOut(true)
+    await signOut()
+  }
+
   useEffect(() => {
     const saved = localStorage.getItem("menu-order")
     if (saved) {
       try {
         setMenuItems(JSON.parse(saved))
       } catch (e) {
-        console.error("[v0] Failed to load menu order:", e)
+        console.error("[HeaderMenu] Failed to load menu order:", e)
       }
     }
   }, [])
 
-  // Save menu order to localStorage
   const saveMenuOrder = (items: MenuItem[]) => {
     localStorage.setItem("menu-order", JSON.stringify(items))
   }
@@ -160,12 +163,9 @@ export function HeaderMenu() {
     triggerHaptic("selection")
   }
 
-  // Group menu items by section
   const groupedItems = menuItems.reduce(
     (acc, item) => {
-      if (!acc[item.section]) {
-        acc[item.section] = []
-      }
+      if (!acc[item.section]) acc[item.section] = []
       acc[item.section].push(item)
       return acc
     },
@@ -187,9 +187,10 @@ export function HeaderMenu() {
       </Link>
 
       <div className="flex items-center gap-1">
+        {/* ── Notifications ──────────────────────────────────────────── */}
         <Sheet>
           <SheetTrigger asChild>
-              <button
+            <button
               className="relative rounded-lg p-2 hover:bg-accent transition-colors"
               aria-label="Notifications"
               onClick={() => triggerHaptic("light")}
@@ -207,7 +208,6 @@ export function HeaderMenu() {
               <SheetTitle className="text-left">Notifications</SheetTitle>
             </SheetHeader>
             <div className="mt-4">
-              {/* Actions bar */}
               {(dbHistory.length > 0 || localNotifications.length > 0) && (
                 <div className="mb-3 flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">
@@ -234,7 +234,6 @@ export function HeaderMenu() {
                 </div>
               )}
 
-              {/* DB-backed notification history */}
               {dbHistory.length === 0 && localNotifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <Bell className="mb-3 h-10 w-10 text-muted-foreground/30" />
@@ -251,7 +250,6 @@ export function HeaderMenu() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {/* DB history items */}
                   {dbHistory.map((n) => {
                     const catColor: Record<string, string> = {
                       match_reminder: "bg-blue-500",
@@ -300,7 +298,6 @@ export function HeaderMenu() {
                     )
                   })}
 
-                  {/* Session-only transient items — not persisted, supplementary only */}
                   {localNotifications.length > 0 && dbHistory.length > 0 && (
                     <p className="px-1 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       This session
@@ -359,6 +356,7 @@ export function HeaderMenu() {
           </SheetContent>
         </Sheet>
 
+        {/* ── Date picker ─────────────────────────────────────────────── */}
         <Sheet>
           <SheetTrigger asChild>
             <button
@@ -408,6 +406,7 @@ export function HeaderMenu() {
           </SheetContent>
         </Sheet>
 
+        {/* ── Account ─────────────────────────────────────────────────── */}
         <Sheet>
           <SheetTrigger asChild>
             <button
@@ -423,29 +422,66 @@ export function HeaderMenu() {
               <SheetTitle className="text-left">Account</SheetTitle>
             </SheetHeader>
             <div className="mt-6 flex flex-col gap-6">
+
+              {/* User info card */}
               <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4">
                 <LogoBadge size={40} linked={false} showWordmark={false} />
-                <div className="flex-1">
-                  <p className="font-semibold">Guest User</p>
-                  <p className="text-xs text-muted-foreground">Sign in to save preferences</p>
+                <div className="flex-1 min-w-0">
+                  {isAuthenticated && user ? (
+                    <>
+                      <p className="font-semibold truncate">
+                        {user.firstName
+                          ? `${user.firstName}${user.lastName ? ` ${user.lastName}` : ""}`
+                          : user.username || user.email}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-semibold">Guest User</p>
+                      <p className="text-xs text-muted-foreground">Sign in to save preferences</p>
+                    </>
+                  )}
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <Link
-                  href="/auth/signin"
-                  className="flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  href="/auth/signin"
-                  className="flex items-center justify-center rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium hover:bg-accent transition-colors"
-                >
-                  Create Account
-                </Link>
-              </div>
+              {/* Auth actions */}
+              {isAuthenticated && user ? (
+                <div className="flex flex-col gap-2">
+                  <Link
+                    href="/profile"
+                    onClick={() => triggerHaptic("selection")}
+                    className="flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    My Profile
+                  </Link>
+                  <button
+                    onClick={handleSignOut}
+                    disabled={signingOut}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-card px-4 py-3 text-sm font-medium text-destructive hover:bg-destructive/5 transition-colors disabled:opacity-60"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    {signingOut ? "Signing out..." : "Sign Out"}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Link
+                    href="/auth/signin"
+                    className="flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    href="/auth/signin"
+                    className="flex items-center justify-center rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium hover:bg-accent transition-colors"
+                  >
+                    Create Account
+                  </Link>
+                </div>
+              )}
 
+              {/* Quick access */}
               <div className="border-t border-border pt-4">
                 <h3 className="mb-3 text-sm font-semibold">Quick Access</h3>
                 <div className="flex flex-col gap-2">
@@ -487,6 +523,7 @@ export function HeaderMenu() {
           </SheetContent>
         </Sheet>
 
+        {/* ── Main menu ───────────────────────────────────────────────── */}
         <Sheet>
           <SheetTrigger asChild>
             <button
@@ -523,8 +560,7 @@ export function HeaderMenu() {
             </SheetHeader>
 
             <nav className="mt-6 flex flex-col gap-6 pb-6">
-
-              {/* ── Upgrade prompt (Bronze users) ── */}
+              {/* Bronze upgrade prompt */}
               {isBronze && (
                 <div className="rounded-xl overflow-hidden border border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 to-amber-400/5">
                   <div className="flex items-start gap-3 px-4 pt-4 pb-3">
@@ -534,7 +570,9 @@ export function HeaderMenu() {
                     <div>
                       <p className="text-sm font-bold">Gold Launch Pass — Free</p>
                       <p className="text-xs text-muted-foreground">
-                        All Gold features free until <span className="font-medium text-foreground">{expiryFormatted}</span>. Lock in Founder pricing now.
+                        All Gold features free until{" "}
+                        <span className="font-medium text-foreground">{expiryFormatted}</span>.
+                        Lock in Founder pricing now.
                       </p>
                     </div>
                   </div>
@@ -549,7 +587,7 @@ export function HeaderMenu() {
                 </div>
               )}
 
-              {/* ── Founder VIP prompt (Gold users — not already Founder VIP) ── */}
+              {/* Gold upgrade prompt */}
               {isGold && !isFounderVip && (
                 <div className="rounded-xl overflow-hidden border border-purple-500/30 bg-gradient-to-br from-purple-500/10 to-purple-400/5">
                   <div className="flex items-start gap-3 px-4 pt-4 pb-3">
@@ -576,7 +614,9 @@ export function HeaderMenu() {
 
               {Object.entries(groupedItems).map(([section, items]) => (
                 <div key={section}>
-                  <h3 className="mb-3 text-sm font-semibold uppercase text-muted-foreground">{section}</h3>
+                  <h3 className="mb-3 text-sm font-semibold uppercase text-muted-foreground">
+                    {section}
+                  </h3>
                   <div className="flex flex-col gap-2">
                     {items.map((item) => (
                       <div
@@ -600,7 +640,9 @@ export function HeaderMenu() {
                             isEditMode ? "pointer-events-none" : ""
                           }`}
                           onClick={!isEditMode ? handleLinkClick : undefined}
-                          {...(item.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                          {...(item.href.startsWith("http")
+                            ? { target: "_blank", rel: "noopener noreferrer" }
+                            : {})}
                         >
                           <span className={item.id === "venue-signup" ? "font-medium text-primary" : ""}>
                             {item.label}

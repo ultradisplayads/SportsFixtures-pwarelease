@@ -1,37 +1,43 @@
 "use client"
 
-// Auth Context — the single source of truth for user identity in the PWA.
+// Auth Context — secure session management.
 //
-// Provider: AuthProvider (wrap in layout.tsx)
-// Consumer: useAuth() hook anywhere in the tree
+// Security model:
+//   JWT         → httpOnly cookie "sf_auth" (never readable by JS)
+//   Expiry time → localStorage only (non-sensitive, used for idle tracking)
+//   User data   → localStorage (non-sensitive UI data: name, email, role)
 //
-// CURRENT STATE (pre-dev auth sprint):
-//   - Anonymous mode: device_token only (already working)
-//   - Stub hooks for all auth methods your dev will implement
+// Session expiry (client requirement):
+//   Normal user / venue owner : 24 hours
+//   Admin / internal          : 2 hours
 //
-// WHEN DEV DELIVERS AUTH:
-//   1. Implement the four login functions below
-//   2. Set AUTH_ENABLED=true in env vars
-//   3. Remove the "TODO" comments
-//   4. The rest of the PWA (favourites, push, onboarding) reads from useAuth()
-//      and will automatically upgrade from device-token to user-id mode
+// On mount  : check localStorage expiry first (instant) → validate with server
+// On login  : set expiry in localStorage, cookie set server-side
+// On expiry : clear localStorage, server clears cookie, redirect to /sign-in
+// On refresh: cookie still valid → session persists ✅
 
-import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  type ReactNode,
+} from "react"
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export type AuthProvider = "email" | "zoho_otp" | "google" | "facebook" | "apple"
+export type AuthProviderType = "email" | "zoho_otp" | "google" | "facebook" | "apple"
 
 export interface AuthUser {
-  id: string                  // Strapi user id
+  id: string
   email: string
   username?: string
   firstName?: string
   lastName?: string
   avatar?: string
-  provider: AuthProvider
-  jwt: string                 // Strapi JWT — use in Authorization: Bearer header
-  deviceToken: string         // Always set — links pre-login activity to account
+  provider: AuthProviderType
+  role?: { type: string; name: string }
+  deviceToken: string
+  // NOTE: No jwt field — JWT lives in httpOnly cookie only
 }
 
 interface AuthState {
@@ -41,10 +47,7 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  // Identity (always available, even anonymous)
   deviceToken: string
-
-  // Auth actions — implement these when dev delivers
   signInWithEmail: (email: string, password: string) => Promise<boolean>
   signInWithZohoOTP: (email: string, otp: string) => Promise<boolean>
   requestZohoOTP: (email: string) => Promise<boolean>
@@ -52,52 +55,78 @@ interface AuthContextType extends AuthState {
   signInWithFacebook: () => Promise<boolean>
   signInWithApple: () => Promise<boolean>
   signOut: () => Promise<void>
-  register: (email: string, password: string, username?: string) => Promise<boolean>
-
-  // Derived
+  register: (email: string, password: string, firstName?: string, lastName?: string) => Promise<boolean>
   isAuthenticated: boolean
   isAnonymous: boolean
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Role-based session durations (client requirement) ────────────────────────
+
+const SESSION_DURATIONS: Record<string, number> = {
+  authenticated: 24 * 60 * 60 * 1000,
+  venue_owner:   24 * 60 * 60 * 1000,
+  admin:          2 * 60 * 60 * 1000,
+  internal:       2 * 60 * 60 * 1000,
+}
+
+const DEFAULT_DURATION = 24 * 60 * 60 * 1000
+
+function getSessionDuration(roleType?: string): number {
+  if (!roleType) return DEFAULT_DURATION
+  return SESSION_DURATIONS[roleType] ?? DEFAULT_DURATION
+}
+
+// ─── localStorage keys ────────────────────────────────────────────────────────
+
+const USER_KEY   = "sf_auth_user"
+const EXPIRY_KEY = "sf_auth_expiry"
+const DEVICE_KEY = "sf_device_token"
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 function getOrCreateDeviceToken(): string {
   if (typeof window === "undefined") return ""
-  let t = localStorage.getItem("sf_device_token")
-  if (!t) {
-    t = crypto.randomUUID()
-    localStorage.setItem("sf_device_token", t)
-  }
+  let t = localStorage.getItem(DEVICE_KEY)
+  if (!t) { t = crypto.randomUUID(); localStorage.setItem(DEVICE_KEY, t) }
   return t
 }
 
-function persistUser(user: AuthUser) {
-  localStorage.setItem("sf_auth_user", JSON.stringify(user))
+function persistSession(user: AuthUser, roleType?: string): void {
+  const duration = getSessionDuration(roleType)
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  localStorage.setItem(EXPIRY_KEY, String(Date.now() + duration))
 }
 
-function clearPersistedUser() {
-  localStorage.removeItem("sf_auth_user")
+function clearSession(): void {
+  localStorage.removeItem(USER_KEY)
+  localStorage.removeItem(EXPIRY_KEY)
 }
 
-function loadPersistedUser(): AuthUser | null {
+function isSessionExpired(): boolean {
+  const expiry = localStorage.getItem(EXPIRY_KEY)
+  if (!expiry) return true
+  return Date.now() > Number(expiry)
+}
+
+function loadCachedUser(): AuthUser | null {
   try {
-    const raw = localStorage.getItem("sf_auth_user")
+    if (isSessionExpired()) { clearSession(); return null }
+    const raw = localStorage.getItem(USER_KEY)
     if (!raw) return null
-    const user = JSON.parse(raw) as AuthUser
-    // Basic expiry check: Strapi JWTs are 30 days — decode exp
-    const parts = user.jwt.split(".")
-    if (parts.length === 3) {
-      const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")))
-      if (payload.exp && payload.exp * 1000 < Date.now()) {
-        clearPersistedUser()
-        return null
-      }
-    }
-    return user
+    return JSON.parse(raw) as AuthUser
   } catch { return null }
 }
 
-// ─── Context ─────────────────────────────────────────────────────────────────
+export function getRoleRedirect(roleType?: string): string {
+  switch (roleType) {
+    case "venue_owner": return "/venue-owners"
+    case "admin":
+    case "internal": return "/admin"
+    default: return "/"
+  }
+}
+
+// ─── Context ──────────────────────────────────────────────────────────────────
 
 const Ctx = createContext<AuthContextType | null>(null)
 
@@ -105,69 +134,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ user: null, loading: true, error: null })
   const [deviceToken] = useState(getOrCreateDeviceToken)
 
-  // Rehydrate from localStorage on mount
+  // Mount: check localStorage expiry instantly, then validate cookie with server
   useEffect(() => {
-    const persisted = loadPersistedUser()
-    setState({ user: persisted, loading: false, error: null })
+    const restore = async () => {
+      const cached = loadCachedUser()
+
+      if (!cached) {
+        setState({ user: null, loading: false, error: null })
+        return
+      }
+
+      // Restore instantly — user sees logged-in UI without waiting for network
+      setState({ user: cached, loading: false, error: null })
+
+      // Background: validate httpOnly cookie is still valid on server
+      try {
+        const res = await fetch("/api/auth/me", { credentials: "include" })
+        const data = await res.json()
+        if (!data.authenticated) {
+          clearSession()
+          setState({ user: null, loading: false, error: null })
+          window.location.href = "/sign-in?reason=session_expired"
+        }
+      } catch {
+        // Network error — keep session alive, cookie still valid
+      }
+    }
+
+    restore()
   }, [])
 
-  // After login: migrate device-token favourites to user account
-  const migrateAnonymousData = useCallback(async (user: AuthUser) => {
+  const migrateAnonymousData = useCallback(async (userId: string) => {
     try {
       await fetch("/api/auth/migrate-device", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ device_token: deviceToken, user_id: user.id, jwt: user.jwt }),
+        body: JSON.stringify({ device_token: deviceToken, user_id: userId }),
       })
-    } catch { /* non-critical — favourites already visible via device_token */ }
+    } catch {}
   }, [deviceToken])
 
-  const setUser = useCallback((user: AuthUser | null) => {
+  const linkPushToUser = useCallback((userId: string) => {
+    if (typeof navigator === "undefined") return
+    navigator.serviceWorker?.ready
+      .then(r => r.pushManager.getSubscription())
+      .then(sub => {
+        if (!sub) return
+        fetch("/api/push/subscribe", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.toJSON().endpoint, userId }),
+        }).catch(() => {})
+      }).catch(() => {})
+  }, [])
+
+  const setUser = useCallback((user: AuthUser | null, roleType?: string) => {
     setState({ user, loading: false, error: null })
     if (user) {
-      persistUser(user)
-      migrateAnonymousData(user)
-      // Update push subscription with user_id
-      navigator.serviceWorker?.ready.then(reg =>
-        reg.pushManager.getSubscription().then(sub => {
-          if (sub) {
-            fetch("/api/push/subscribe", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ endpoint: sub.toJSON().endpoint, userId: user.id }),
-            }).catch(() => {})
-          }
-        })
-      )
+      persistSession(user, roleType)
+      migrateAnonymousData(user.id)
+      linkPushToUser(user.id)
     } else {
-      clearPersistedUser()
+      clearSession()
     }
-  }, [migrateAnonymousData])
+  }, [migrateAnonymousData, linkPushToUser])
 
-  // ─── Email + Password ─────────────────────────────────────────────────────
   const signInWithEmail = useCallback(async (email: string, password: string): Promise<boolean> => {
     setState(s => ({ ...s, loading: true, error: null }))
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SF_API_URL || "https://staging-api.sportsfixtures.net"}/api/auth/local`, {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: email, password }),
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
       })
       const data = await res.json()
-      if (!res.ok) {
-        setState(s => ({ ...s, loading: false, error: data.error?.message || "Login failed" }))
+      if (!res.ok || !data.success) {
+        setState(s => ({ ...s, loading: false, error: data.error || "Sign in failed" }))
         return false
       }
-      setUser({
-        id: String(data.user.id),
-        email: data.user.email,
-        username: data.user.username,
-        firstName: data.user.firstName,
-        lastName: data.user.lastName,
-        provider: "email",
-        jwt: data.jwt,
-        deviceToken,
-      })
+      const roleType = data.user?.role?.type
+      setUser({ id: String(data.user.id), email: data.user.email, username: data.user.username, firstName: data.user.firstName, lastName: data.user.lastName, provider: "email", role: data.user.role, deviceToken }, roleType)
       return true
     } catch (e: any) {
       setState(s => ({ ...s, loading: false, error: e.message }))
@@ -175,41 +222,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [deviceToken, setUser])
 
-  // ─── Register ─────────────────────────────────────────────────────────────
-  const register = useCallback(async (email: string, password: string, username?: string): Promise<boolean> => {
+  const register = useCallback(async (email: string, password: string, username?: string,  firstName?: string, lastName?: string): Promise<boolean> => {
     setState(s => ({ ...s, loading: true, error: null }))
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SF_API_URL || "https://staging-api.sportsfixtures.net"}/api/auth/local/register`, {
+      const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, username: username || email.split("@")[0] }),
-      })
+        body: JSON.stringify({
+          email,
+          password,
+          username: firstName || email.split("@")[0],
+          firstName: firstName || email.split("@")[0],
+          lastName: lastName || firstName || email.split("@")[0], // ← never empty
+        }),
+            })
       const data = await res.json()
       if (!res.ok) {
-        setState(s => ({ ...s, loading: false, error: data.error?.message || "Registration failed" }))
+        setState(s => ({ ...s, loading: false, error: data.error || "Registration failed" }))
         return false
       }
-      setUser({
-        id: String(data.user.id),
-        email: data.user.email,
-        username: data.user.username,
-        provider: "email",
-        jwt: data.jwt,
-        deviceToken,
-      })
+      setState(s => ({ ...s, loading: false }))
       return true
     } catch (e: any) {
       setState(s => ({ ...s, loading: false, error: e.message }))
       return false
     }
-  }, [deviceToken, setUser])
+  }, [])
 
-  // ─── Zoho OTP ─────────────────────────────────────────────────────────────
-  // Step 1: requestZohoOTP(email) → Strapi sends OTP via Zoho Mail
-  // Step 2: signInWithZohoOTP(email, otp) → validates OTP, returns JWT
   const requestZohoOTP = useCallback(async (email: string): Promise<boolean> => {
     try {
-      const res = await fetch("/api/auth/zoho-otp/request", {
+      const res = await fetch("/api/auth/resend-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -221,17 +263,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithZohoOTP = useCallback(async (email: string, otp: string): Promise<boolean> => {
     setState(s => ({ ...s, loading: true, error: null }))
     try {
-      const res = await fetch("/api/auth/zoho-otp/verify", {
+      const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp, device_token: deviceToken }),
+        credentials: "include",
+        body: JSON.stringify({ email, otp }),
       })
       const data = await res.json()
-      if (!res.ok) {
+      if (!res.ok || !data.success) {
         setState(s => ({ ...s, loading: false, error: data.error || "Invalid OTP" }))
         return false
       }
-      setUser({ ...data.user, provider: "zoho_otp", jwt: data.jwt, deviceToken })
+      const roleType = data.user?.role?.type
+      setUser({ id: String(data.user.id), email: data.user.email, username: data.user.username, firstName: data.user.firstName, lastName: data.user.lastName, provider: "zoho_otp", role: data.user.role, deviceToken }, roleType)
       return true
     } catch (e: any) {
       setState(s => ({ ...s, loading: false, error: e.message }))
@@ -239,45 +283,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [deviceToken, setUser])
 
-  // ─── Social providers ─────────────────────────────────────────────────────
-  // Strapi supports these natively. Flow: redirect → callback → JWT
   const signInWithGoogle = useCallback(async (): Promise<boolean> => {
-    const apiBase = process.env.NEXT_PUBLIC_SF_API_URL || "https://staging-api.sportsfixtures.net"
-    window.location.href = `${apiBase}/api/connect/google?device_token=${deviceToken}`
+    window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/connect/google`
     return true
-  }, [deviceToken])
+  }, [])
 
   const signInWithFacebook = useCallback(async (): Promise<boolean> => {
-    const apiBase = process.env.NEXT_PUBLIC_SF_API_URL || "https://staging-api.sportsfixtures.net"
-    window.location.href = `${apiBase}/api/connect/facebook?device_token=${deviceToken}`
+    window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/connect/facebook`
     return true
-  }, [deviceToken])
+  }, [])
 
   const signInWithApple = useCallback(async (): Promise<boolean> => {
-    const apiBase = process.env.NEXT_PUBLIC_SF_API_URL || "https://staging-api.sportsfixtures.net"
-    window.location.href = `${apiBase}/api/connect/apple?device_token=${deviceToken}`
+    window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/connect/apple`
     return true
-  }, [deviceToken])
+  }, [])
 
-  // ─── Sign out ─────────────────────────────────────────────────────────────
   const signOut = useCallback(async () => {
-    setUser(null)
-  }, [setUser])
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" })
+    } catch {}
+    clearSession()
+    setState({ user: null, loading: false, error: null })
+    window.location.href = "/auth/signin"
+  }, [])
+
+  // Cross-tab sync — logout in one tab logs out all tabs
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === USER_KEY && e.newValue === null) {
+        setState({ user: null, loading: false, error: null })
+        window.location.href = "/sign-in"
+      }
+      if (e.key === USER_KEY && e.newValue) {
+        try { setState({ user: JSON.parse(e.newValue), loading: false, error: null }) } catch {}
+      }
+    }
+    window.addEventListener("storage", handleStorage)
+    return () => window.removeEventListener("storage", handleStorage)
+  }, [])
 
   return (
     <Ctx.Provider value={{
-      ...state,
-      deviceToken,
+      ...state, deviceToken,
       isAuthenticated: !!state.user,
       isAnonymous: !state.user,
-      signInWithEmail,
-      signInWithZohoOTP,
-      requestZohoOTP,
-      signInWithGoogle,
-      signInWithFacebook,
-      signInWithApple,
-      signOut,
-      register,
+      signInWithEmail, signInWithZohoOTP, requestZohoOTP,
+      signInWithGoogle, signInWithFacebook, signInWithApple,
+      signOut, register,
     }}>
       {children}
     </Ctx.Provider>

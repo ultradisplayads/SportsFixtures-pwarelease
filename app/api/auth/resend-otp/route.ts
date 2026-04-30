@@ -2,15 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 
 const STRAPI_URL = process.env.SF_API_URL || "https://staging-api.sportsfixtures.net"
 
-/**
- * POST /api/auth/zoho-otp/request
- * Sends OTP to email via Strapi's resend-otp endpoint.
- */
 export async function POST(req: NextRequest) {
   const { email } = await req.json().catch(() => ({}))
 
-  if (!email || !email.includes("@")) {
-    return NextResponse.json({ error: "Valid email required" }, { status: 400 })
+  if (!email) {
+    return NextResponse.json({ error: "Email is required" }, { status: 400 })
   }
 
   try {

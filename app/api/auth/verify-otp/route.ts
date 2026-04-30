@@ -4,16 +4,11 @@ const STRAPI_URL = process.env.SF_API_URL || "https://staging-api.sportsfixtures
 const COOKIE_NAME = "sf_auth"
 const COOKIE_MAX_AGE = 24 * 60 * 60
 
-/**
- * POST /api/auth/zoho-otp/verify
- * Verifies OTP via Strapi's verify-otp endpoint.
- * Sets JWT in httpOnly cookie on success.
- */
 export async function POST(req: NextRequest) {
-  const { email, otp, device_token } = await req.json().catch(() => ({}))
+  const { email, otp } = await req.json().catch(() => ({}))
 
   if (!email || !otp) {
-    return NextResponse.json({ error: "email and otp required" }, { status: 400 })
+    return NextResponse.json({ error: "Email and OTP are required" }, { status: 400 })
   }
 
   try {
@@ -39,9 +34,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Verification failed" }, { status: 500 })
     }
 
+    // ✅ JWT in httpOnly cookie — same pattern as Google/Facebook
     const response = NextResponse.json({ success: true, user })
 
-    // JWT in httpOnly cookie — matches main web app
     response.cookies.set(COOKIE_NAME, jwt, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
