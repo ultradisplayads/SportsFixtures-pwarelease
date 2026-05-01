@@ -8,7 +8,7 @@
 import Link from "next/link"
 import {
   ArrowLeft, LayoutDashboard, Radio, Trophy, Flag, Tag, MapPin, Bell,
-  ChevronRight,
+  ChevronRight, Monitor
 } from "lucide-react"
 import { LogoBadge } from "@/components/logo-badge"
 
@@ -60,6 +60,12 @@ const ADMIN_SECTIONS = [
     icon: Bell,
     title: "Push Notifications",
     description: "Compose and send targeted push notifications to users",
+  },
+  {
+    href: "/admin/xibo",
+    icon: Monitor,
+    title: "Xibo Signage",
+    description: "Push fixture content to venue screens — trigger manual pushes and monitor sync status",
   },
 ]
 
