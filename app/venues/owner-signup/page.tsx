@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { Phone, Tv, Building2, Mail } from "lucide-react"
+import { Phone, Tv, Building2, Mail, Lock, Eye, EyeOff } from "lucide-react"
 import { useLocation } from "@/components/location-provider"
 import { triggerHaptic } from "@/lib/haptic-feedback"
 import { gamificationManager } from "@/lib/gamification-manager"
@@ -13,6 +13,8 @@ export default function VenueOwnerSignupPage() {
   const [formData, setFormData] = useState({
     ownerName: "",
     ownerEmail: "",
+    password: "",
+    confirmPassword: "",
     venueName: "",
     venueType: "bar",
     address: "",
@@ -29,8 +31,11 @@ export default function VenueOwnerSignupPage() {
     hasPool: false,
     hasDarts: false,
   })
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [submitError, setSubmitError] = useState("")
 
   useEffect(() => {
     if (location) {
@@ -44,12 +49,25 @@ export default function VenueOwnerSignupPage() {
     }
   }, [location])
 
-  const [submitError, setSubmitError] = useState("")
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setSubmitting(true)
     setSubmitError("")
+
+    // Validation
+    if (formData.password.length < 8) {
+      return setSubmitError("Password must be at least 8 characters")
+    }
+    if (!/[A-Z]/.test(formData.password)) {
+      return setSubmitError("Password must contain at least one uppercase letter")
+    }
+    if (!/[0-9]/.test(formData.password)) {
+      return setSubmitError("Password must contain at least one number")
+    }
+    if (formData.password !== formData.confirmPassword) {
+      return setSubmitError("Passwords do not match")
+    }
+
+    setSubmitting(true)
     triggerHaptic("medium")
 
     try {
@@ -57,23 +75,24 @@ export default function VenueOwnerSignupPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ownerName: formData.ownerName,
-          ownerEmail: formData.ownerEmail,
-          ownerPhone: formData.phone,
-          venueName: formData.venueName,
-          venueType: formData.venueType,
-          address: formData.address,
-          city: formData.city,
-          country: formData.country,
-          whatsapp: formData.whatsapp,
-          lineId: formData.lineId,
+          ownerName:   formData.ownerName,
+          ownerEmail:  formData.ownerEmail,
+          ownerPhone:  formData.phone,
+          password:    formData.password,
+          venueName:   formData.venueName,
+          venueType:   formData.venueType,
+          address:     formData.address,
+          city:        formData.city,
+          country:     formData.country,
+          whatsapp:    formData.whatsapp,
+          lineId:      formData.lineId,
           screenCount: formData.screenCount,
-          capacity: formData.capacity,
-          lat: formData.latitude,
-          lng: formData.longitude,
-          sports: formData.sports,
-          hasPool: formData.hasPool,
-          hasDarts: formData.hasDarts,
+          capacity:    formData.capacity,
+          lat:         formData.latitude,
+          lng:         formData.longitude,
+          sports:      formData.sports,
+          hasPool:     formData.hasPool,
+          hasDarts:    formData.hasDarts,
         }),
       })
       const json = await res.json()
@@ -90,7 +109,6 @@ export default function VenueOwnerSignupPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target
     const checked = (e.target as HTMLInputElement).checked
-
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -101,7 +119,9 @@ export default function VenueOwnerSignupPage() {
     triggerHaptic("selection")
     setFormData((prev) => ({
       ...prev,
-      sports: prev.sports.includes(sport) ? prev.sports.filter((s) => s !== sport) : [...prev.sports, sport],
+      sports: prev.sports.includes(sport)
+        ? prev.sports.filter((s) => s !== sport)
+        : [...prev.sports, sport],
     }))
   }
 
@@ -110,6 +130,7 @@ export default function VenueOwnerSignupPage() {
     requestLocation()
   }
 
+  // ── Success ──────────────────────────────────────────────────────────────────
   if (submitted) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
@@ -117,23 +138,23 @@ export default function VenueOwnerSignupPage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
             <Building2 className="h-8 w-8 text-green-600 dark:text-green-400" />
           </div>
-          <h2 className="text-2xl font-bold">Thank You!</h2>
+          <h2 className="text-2xl font-bold">Account Created!</h2>
           <p className="mt-2 text-muted-foreground">
-            Your venue registration has been submitted. Our team will review your application and contact you within
-            24-48 hours.
+            Welcome! Your venue <strong>{formData.venueName}</strong> has been registered.
+            You can now sign in with <strong>{formData.ownerEmail}</strong>.
           </p>
           <div className="mt-6 flex flex-col gap-2">
             <a
-              href="/"
+              href="/auth/signin"
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Back to Home
+              Sign In to Dashboard
             </a>
             <a
-              href="/venues"
+              href="/"
               className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-accent"
             >
-              Find Venues
+              Back to Home
             </a>
           </div>
         </div>
@@ -141,6 +162,7 @@ export default function VenueOwnerSignupPage() {
     )
   }
 
+  // ── Form ─────────────────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
       <div className="sticky top-0 z-10 border-b border-border bg-card px-4 py-4">
@@ -149,7 +171,60 @@ export default function VenueOwnerSignupPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6 p-4">
-        {/* Owner Information */}
+
+        {/* ── Account ── */}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h2 className="mb-4 flex items-center gap-2 font-semibold">
+            <Lock className="h-5 w-5 text-primary" />
+            Create Account
+          </h2>
+          <div className="flex flex-col gap-4">
+            <div>
+              <label className="text-sm font-medium">Password *</label>
+              <div className="relative mt-1">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  required
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm"
+                  placeholder="Min. 8 chars, 1 uppercase, 1 number"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Confirm Password *</label>
+              <div className="relative mt-1">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  name="confirmPassword"
+                  required
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm"
+                  placeholder="Repeat your password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Owner Information ── */}
         <div className="rounded-lg border border-border bg-card p-4">
           <h2 className="mb-4 flex items-center gap-2 font-semibold">
             <Mail className="h-5 w-5 text-primary" />
@@ -183,7 +258,7 @@ export default function VenueOwnerSignupPage() {
           </div>
         </div>
 
-        {/* Venue Information */}
+        {/* ── Venue Information ── */}
         <div className="rounded-lg border border-border bg-card p-4">
           <h2 className="mb-4 flex items-center gap-2 font-semibold">
             <Building2 className="h-5 w-5 text-primary" />
@@ -257,7 +332,7 @@ export default function VenueOwnerSignupPage() {
               </div>
             </div>
 
-            {/* Location Capture */}
+            {/* Geolocation */}
             <div className="rounded-lg border border-border bg-accent/50 p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
@@ -282,7 +357,7 @@ export default function VenueOwnerSignupPage() {
           </div>
         </div>
 
-        {/* Contact Information */}
+        {/* ── Contact Information ── */}
         <div className="rounded-lg border border-border bg-card p-4">
           <h2 className="mb-4 flex items-center gap-2 font-semibold">
             <Phone className="h-5 w-5 text-primary" />
@@ -326,7 +401,7 @@ export default function VenueOwnerSignupPage() {
           </div>
         </div>
 
-        {/* Venue Details */}
+        {/* ── Venue Details ── */}
         <div className="rounded-lg border border-border bg-card p-4">
           <h2 className="mb-4 flex items-center gap-2 font-semibold">
             <Tv className="h-5 w-5 text-primary" />
@@ -407,18 +482,19 @@ export default function VenueOwnerSignupPage() {
           </div>
         </div>
 
-        {/* Submit Button */}
+        {/* ── Submit ── */}
         {submitError && (
           <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
             {submitError}
           </p>
         )}
+
         <button
           type="submit"
           disabled={submitting}
           className="rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          {submitting ? "Submitting..." : "Submit Application"}
+          {submitting ? "Creating Account..." : "Create Account & Register Venue"}
         </button>
 
         <p className="text-center text-xs text-muted-foreground">
