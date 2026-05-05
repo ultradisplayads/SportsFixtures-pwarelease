@@ -283,15 +283,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [deviceToken, setUser])
 
-  const signInWithGoogle = useCallback(async (): Promise<boolean> => {
-    window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/connect/google`
-    return true
-  }, [])
+// ✅ Replace signInWithGoogle
+const signInWithGoogle = useCallback(async (): Promise<boolean> => {
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+  window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/oauth/init?provider=google&origin=${encodeURIComponent(origin)}`
+  return true
+}, [])
 
-  const signInWithFacebook = useCallback(async (): Promise<boolean> => {
-    window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/connect/facebook`
-    return true
-  }, [])
+// ✅ Replace signInWithFacebook
+const signInWithFacebook = useCallback(async (): Promise<boolean> => {
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+  window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/oauth/init?provider=facebook&origin=${encodeURIComponent(origin)}`
+  return true
+}, [])
 
   const signInWithApple = useCallback(async (): Promise<boolean> => {
     window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/connect/apple`
