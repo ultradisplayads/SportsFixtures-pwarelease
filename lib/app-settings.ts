@@ -9,6 +9,8 @@ export type AppSettings = {
   quirkyAnimations: boolean
   /** Fan mode (disco colour overlay). Mirrors disco_mode key. */
   fanMode: boolean
+  /** Fan mode visual background intensity. */
+  fanModeBackground: "dark" | "light"
 }
 
 const STORAGE_KEY = "sf_app_settings"
@@ -16,6 +18,7 @@ const STORAGE_KEY = "sf_app_settings"
 export const DEFAULT_SETTINGS: AppSettings = {
   quirkyAnimations: false,
   fanMode: false,
+  fanModeBackground: "dark",
 }
 
 export function loadAppSettings(): AppSettings {
@@ -26,7 +29,9 @@ export function loadAppSettings(): AppSettings {
       const legacyFanMode = localStorage.getItem("disco_mode") === "true"
       return { ...DEFAULT_SETTINGS, fanMode: legacyFanMode }
     }
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
+    const parsed = JSON.parse(raw)
+    const fanModeBackground = parsed.fanModeBackground === "light" ? "light" : "dark"
+    return { ...DEFAULT_SETTINGS, ...parsed, fanModeBackground }
   } catch {
     return { ...DEFAULT_SETTINGS }
   }
@@ -39,6 +44,7 @@ export function saveAppSettings(next: Partial<AppSettings>): AppSettings {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
     // Keep legacy disco_mode key in sync
     localStorage.setItem("disco_mode", String(merged.fanMode))
+    window.dispatchEvent(new CustomEvent("sf:app-settings-change", { detail: merged }))
   } catch { /* ignore */ }
   return merged
 }

@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react"
 import { getHeadToHead, type H2HMatch } from "@/app/actions/sports-api"
 import { MatchDetailSkeleton } from "@/components/skeleton-loader"
-import { TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { Check, ChevronDown, Minus, X } from "lucide-react"
+
+type H2HFilter = "all" | "home" | "competition"
 
 export function MatchH2H({
   homeTeamId,
@@ -16,6 +18,8 @@ export function MatchH2H({
 }) {
   const [h2hMatches, setH2hMatches] = useState<H2HMatch[]>([])
   const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<H2HFilter>("all")
+  const [showMoreStreaks, setShowMoreStreaks] = useState(false)
 
   useEffect(() => {
     loadH2H()
@@ -41,19 +45,24 @@ export function MatchH2H({
     }
   }
 
-  const calculateStats = () => {
-    if (h2hMatches.length === 0) {
+  const filteredMatches = h2hMatches.filter((match) => {
+    if (filter === "home") return match.strHomeTeam === h2hMatches[0]?.strHomeTeam
+    if (filter === "competition") return !leagueId || String((match as any).idLeague || "") === String(leagueId)
+    return true
+  })
+
+  const calculateStats = (matches = filteredMatches) => {
+    if (matches.length === 0) {
       return { homeWins: 0, awayWins: 0, draws: 0 }
     }
 
     const homeTeamName = h2hMatches[0]?.strHomeTeam || ""
-    const awayTeamName = h2hMatches[0]?.strAwayTeam || ""
 
     let homeWins = 0
     let awayWins = 0
     let draws = 0
 
-    h2hMatches.forEach((match) => {
+    matches.forEach((match) => {
       const result = getMatchResult(match, homeTeamName)
       if (result === "win") homeWins++
       else if (result === "loss") awayWins++
@@ -61,6 +70,46 @@ export function MatchH2H({
     })
 
     return { homeWins, awayWins, draws }
+  }
+
+  const buildStreaks = () => {
+    const matches = filteredMatches
+    const homeTeamName = h2hMatches[0]?.strHomeTeam || ""
+    const awayTeamName = h2hMatches[0]?.strAwayTeam || ""
+    const total = matches.length
+    const lowScoring = matches.filter((match) => Number(match.intHomeScore || 0) + Number(match.intAwayScore || 0) < 3).length
+    const homeNoWins = matches.every((match) => getMatchResult(match, homeTeamName) !== "win")
+    const awayNoWins = matches.every((match) => getMatchResult(match, awayTeamName) !== "win")
+    const homeWithoutCleanSheet = matches.filter((match) => Number(match.intAwayScore || 0) > 0).length
+    const awayWithoutCleanSheet = matches.filter((match) => Number(match.intHomeScore || 0) > 0).length
+
+    return [
+      {
+        label: "Fewer than 2.5 goals",
+        value: total ? `${lowScoring}/${total}` : "-",
+        ok: total ? lowScoring / total >= 0.6 : false,
+      },
+      {
+        label: `${homeTeamName || "Home"} no wins`,
+        value: homeNoWins ? String(total) : "No",
+        ok: homeNoWins,
+      },
+      {
+        label: `${awayTeamName || "Away"} no wins`,
+        value: awayNoWins ? String(total) : "No",
+        ok: awayNoWins,
+      },
+      {
+        label: `${homeTeamName || "Home"} without clean sheet`,
+        value: String(homeWithoutCleanSheet),
+        ok: homeWithoutCleanSheet >= Math.max(2, Math.floor(total * 0.6)),
+      },
+      {
+        label: `${awayTeamName || "Away"} without clean sheet`,
+        value: String(awayWithoutCleanSheet),
+        ok: awayWithoutCleanSheet >= Math.max(2, Math.floor(total * 0.6)),
+      },
+    ]
   }
 
   if (loading) {
@@ -83,33 +132,78 @@ export function MatchH2H({
 
   const stats = calculateStats()
   const homeTeamName = h2hMatches[0]?.strHomeTeam || ""
+  const awayTeamName = h2hMatches[0]?.strAwayTeam || ""
+  const total = Math.max(1, stats.homeWins + stats.awayWins + stats.draws)
+  const streaks = buildStreaks()
+  const visibleStreaks = showMoreStreaks ? streaks : streaks.slice(0, 3)
 
   return (
     <div className="space-y-4 p-4">
-      {/* Overall Stats */}
       <div className="rounded-xl border border-border bg-card p-4">
-        <h3 className="mb-4 font-semibold">Overall Record (Last 5 Meetings)</h3>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-lg bg-green-500/10 p-3 text-center">
-            <div className="flex items-center justify-center gap-1 text-green-500">
-              <TrendingUp className="h-4 w-4" />
+        <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Head to Head streaks</h3>
+        <div className="divide-y divide-border">
+          {visibleStreaks.map((streak) => (
+            <div key={streak.label} className="flex items-center justify-between gap-3 py-3">
+              <p className="text-sm font-semibold">{streak.label}</p>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold tabular-nums">{streak.value}</span>
+                {streak.ok ? <Check className="h-4 w-4 text-green-500" /> : <X className="h-4 w-4 text-destructive" />}
+              </div>
             </div>
-            <p className="mt-1 text-2xl font-bold">{stats.homeWins}</p>
-            <p className="text-xs text-muted-foreground">Home Wins</p>
+          ))}
+        </div>
+        {streaks.length > 3 && (
+          <button
+            type="button"
+            onClick={() => setShowMoreStreaks((value) => !value)}
+            className="mt-2 flex w-full items-center justify-center gap-1 text-sm font-semibold text-muted-foreground"
+          >
+            {showMoreStreaks ? "See less" : "See more"}
+            <ChevronDown className={`h-4 w-4 transition-transform ${showMoreStreaks ? "rotate-180" : ""}`} />
+          </button>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-4 grid grid-cols-3 gap-2 rounded-xl bg-background p-1">
+          {[
+            { id: "all" as H2HFilter, label: "H2H" },
+            { id: "home" as H2HFilter, label: homeTeamName || "Home" },
+            { id: "competition" as H2HFilter, label: "This competition" },
+          ].map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setFilter(item.id)}
+              className={`truncate rounded-lg px-3 py-2 text-xs font-bold transition-colors ${
+                filter === item.id ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-semibold text-muted-foreground">Head To Head</p>
+          <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold">All</span>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-semibold">{homeTeamName}</span>
+            <span className="text-muted-foreground">Total matches ({filteredMatches.length})</span>
+            <span className="font-semibold text-right">{awayTeamName}</span>
           </div>
-          <div className="rounded-lg bg-muted p-3 text-center">
-            <div className="flex items-center justify-center gap-1">
-              <Minus className="h-4 w-4" />
-            </div>
-            <p className="mt-1 text-2xl font-bold">{stats.draws}</p>
-            <p className="text-xs text-muted-foreground">Draws</p>
+          <div className="grid h-2 overflow-hidden rounded-full bg-muted" style={{ gridTemplateColumns: `${stats.homeWins || 0}fr ${stats.draws || 0}fr ${stats.awayWins || 0}fr` }}>
+            <span className="bg-primary" />
+            <span className="bg-muted-foreground/40" />
+            <span className="bg-yellow-500" />
           </div>
-          <div className="rounded-lg bg-blue-500/10 p-3 text-center">
-            <div className="flex items-center justify-center gap-1 text-blue-500">
-              <TrendingDown className="h-4 w-4" />
-            </div>
-            <p className="mt-1 text-2xl font-bold">{stats.awayWins}</p>
-            <p className="text-xs text-muted-foreground">Away Wins</p>
+          <div className="grid grid-cols-3 text-xs">
+            <span className="font-semibold text-primary">{stats.homeWins} win {Math.round((stats.homeWins / total) * 100)}%</span>
+            <span className="text-center font-semibold text-muted-foreground">{stats.draws} draw {Math.round((stats.draws / total) * 100)}%</span>
+            <span className="text-right font-semibold text-yellow-600">{stats.awayWins} win {Math.round((stats.awayWins / total) * 100)}%</span>
           </div>
         </div>
       </div>
@@ -118,7 +212,7 @@ export function MatchH2H({
       <div className="rounded-xl border border-border bg-card p-4">
         <h3 className="mb-3 font-semibold">Previous Meetings</h3>
         <div className="space-y-3">
-          {h2hMatches.map((match, index) => {
+          {filteredMatches.map((match, index) => {
             const result = getMatchResult(match, homeTeamName)
             return (
               <div key={index} className="rounded-lg border border-border bg-background p-3">

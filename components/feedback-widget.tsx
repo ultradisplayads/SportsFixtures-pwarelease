@@ -65,7 +65,7 @@ export function FeedbackWidget() {
       {/* Floating trigger */}
       <button
         onClick={() => { setOpen(true); triggerHaptic("light") }}
-        className="fixed bottom-24 right-4 z-40 flex items-center gap-1.5 rounded-full bg-primary px-3 py-2 text-xs font-medium text-primary-foreground shadow-lg hover:bg-primary/90 transition-all active:scale-95"
+        className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] right-4 z-40 flex items-center gap-1.5 rounded-full bg-primary px-3 py-2 text-xs font-medium text-primary-foreground shadow-lg transition-all hover:bg-primary/90 active:scale-95"
         aria-label="Give feedback"
       >
         <MessageSquarePlus className="h-4 w-4" />

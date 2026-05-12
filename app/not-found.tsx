@@ -1,11 +1,15 @@
 import Link from "next/link"
 import { SearchX } from "lucide-react"
+import { LogoSquare } from "@/components/logo-badge"
 
 export default function NotFound() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
       <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <div className="mb-4 flex justify-center">
+          <LogoSquare size={82} />
+        </div>
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
           <SearchX className="h-7 w-7" />
         </div>
         <h1 className="text-2xl font-bold">Page not found</h1>

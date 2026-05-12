@@ -1,13 +1,11 @@
 "use client"
 
-// Gamification System for Sports Fixtures
-// Tracks user interactions, predictions, and awards points
-
 export interface UserPrediction {
   matchId: string
   homeScore: number
   awayScore: number
   timestamp: number
+  weekKey: string
   result?: "correct" | "close" | "wrong"
   pointsEarned?: number
 }
@@ -33,6 +31,8 @@ export interface UserStats {
   favoriteTeam?: string
   favoriteLeague?: string
   dailyPredictionsUsed: number
+  weeklyPredictionsUsed: number
+  predictionWeekKey: string
   lastPredictionDate: string
   adsWatchedToday: number
 }
@@ -46,24 +46,25 @@ export interface LeaderboardEntry {
   badge?: string
 }
 
-const POINTS_SYSTEM = {
-  view_match: 1,
-  predict_match: 5,
-  correct_prediction: 20,
-  close_prediction: 10,
-  share_match: 3,
-  daily_streak: 5,
-  weekly_streak: 25,
-  follow_team: 2,
+export const WEEKLY_PREDICTION_LIMIT = 20
+
+export const PREDICTION_POINTS = {
+  submit: 2,
+  exactScore: 25,
+  correctOutcome: 10,
+  correctGoalDifference: 7,
+  oneTeamScore: 3,
+  shareMatch: 3,
+  followTeam: 2,
 }
 
 const LEVELS = [
-  { level: 1, minPoints: 0, name: "Rookie Fan", badge: "🆕" },
-  { level: 2, minPoints: 100, name: "Casual Supporter", badge: "⚽" },
-  { level: 3, minPoints: 500, name: "Die-Hard Fan", badge: "🔥" },
-  { level: 4, minPoints: 1000, name: "Super Fan", badge: "⭐" },
-  { level: 5, minPoints: 2500, name: "Legend", badge: "👑" },
-  { level: 6, minPoints: 5000, name: "Hall of Famer", badge: "🏆" },
+  { level: 1, minPoints: 0, name: "Rookie Fan", badge: "R" },
+  { level: 2, minPoints: 100, name: "Casual Supporter", badge: "F" },
+  { level: 3, minPoints: 500, name: "Die-Hard Fan", badge: "S" },
+  { level: 4, minPoints: 1000, name: "Super Fan", badge: "A" },
+  { level: 5, minPoints: 2500, name: "Legend", badge: "L" },
+  { level: 6, minPoints: 5000, name: "Hall of Famer", badge: "H" },
 ]
 
 class GamificationManager {
@@ -71,21 +72,13 @@ class GamificationManager {
   private predictionsKey = "sportsfixtures_predictions"
   private interactionsKey = "sportsfixtures_interactions"
 
-  getUserStats(): UserStats {
-    if (typeof window === "undefined") {
-      return this.getDefaultStats()
-    }
-
-    const stored = localStorage.getItem(this.storageKey)
-    if (!stored) {
-      return this.getDefaultStats()
-    }
-
-    try {
-      return JSON.parse(stored)
-    } catch {
-      return this.getDefaultStats()
-    }
+  getWeekKey(date = new Date()) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+    const dayNum = d.getUTCDay() || 7
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+    const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+    return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`
   }
 
   private getDefaultStats(): UserStats {
@@ -99,89 +92,85 @@ class GamificationManager {
       streak: 0,
       badges: [],
       dailyPredictionsUsed: 0,
+      weeklyPredictionsUsed: 0,
+      predictionWeekKey: this.getWeekKey(),
       lastPredictionDate: new Date().toDateString(),
       adsWatchedToday: 0,
+    }
+  }
+
+  private normaliseStats(stats: UserStats): UserStats {
+    const weekKey = this.getWeekKey()
+    const today = new Date().toDateString()
+    const predictions = this.getPredictions()
+
+    if (!stats.predictionWeekKey) stats.predictionWeekKey = weekKey
+    if (stats.predictionWeekKey !== weekKey) {
+      stats.weeklyPredictionsUsed = 0
+      stats.predictionWeekKey = weekKey
+    }
+    if (typeof stats.weeklyPredictionsUsed !== "number") {
+      stats.weeklyPredictionsUsed = Object.values(predictions).filter((p) => p.weekKey === weekKey).length
+    }
+    if (stats.lastPredictionDate !== today) {
+      stats.dailyPredictionsUsed = 0
+      stats.adsWatchedToday = 0
+      stats.lastPredictionDate = today
+    }
+    return stats
+  }
+
+  getUserStats(): UserStats {
+    if (typeof window === "undefined") return this.getDefaultStats()
+    const stored = localStorage.getItem(this.storageKey)
+    if (!stored) return this.getDefaultStats()
+    try {
+      return this.normaliseStats(JSON.parse(stored))
+    } catch {
+      return this.getDefaultStats()
     }
   }
 
   saveUserStats(stats: UserStats) {
     if (typeof window === "undefined") return
     localStorage.setItem(this.storageKey, JSON.stringify(stats))
-  }
-
-  addPoints(points: number, reason: string) {
-    const stats = this.getUserStats()
-    stats.totalPoints += points
-
-    // Update level
-    const newLevel = this.calculateLevel(stats.totalPoints)
-    if (newLevel.level > stats.level) {
-      stats.level = newLevel.level
-      stats.rank = newLevel.name
-      // Award badge for leveling up
-      if (!stats.badges.includes(newLevel.badge)) {
-        stats.badges.push(newLevel.badge)
-      }
-    }
-
-    // Track interaction
-    this.trackInteraction({
-      type: "view",
-      timestamp: Date.now(),
-      points,
-    })
-
-    this.saveUserStats(stats)
-    return stats
+    window.dispatchEvent(new CustomEvent("sf:gamification:update", { detail: stats }))
   }
 
   calculateLevel(points: number) {
     for (let i = LEVELS.length - 1; i >= 0; i--) {
-      if (points >= LEVELS[i].minPoints) {
-        return LEVELS[i]
-      }
+      if (points >= LEVELS[i].minPoints) return LEVELS[i]
     }
     return LEVELS[0]
   }
 
-  canMakePrediction(tier: string): { allowed: boolean; reason?: string } {
+  private applyLevel(stats: UserStats) {
+    const next = this.calculateLevel(stats.totalPoints)
+    stats.level = next.level
+    stats.rank = next.name
+    if (!stats.badges.includes(next.badge)) stats.badges.push(next.badge)
+  }
+
+  addPoints(points: number, reason: string, matchId?: string) {
     const stats = this.getUserStats()
-    const today = new Date().toDateString()
+    stats.totalPoints += points
+    this.applyLevel(stats)
+    this.trackInteraction({ type: "view", matchId, timestamp: Date.now(), points })
+    this.saveUserStats(stats)
+    return stats
+  }
 
-    // Reset daily counts if new day
-    if (stats.lastPredictionDate !== today) {
-      stats.dailyPredictionsUsed = 0
-      stats.adsWatchedToday = 0
-      stats.lastPredictionDate = today
-      this.saveUserStats(stats)
-    }
-
-    // Gold = unlimited predictions
-    if (tier === "gold") {
-      return { allowed: true }
-    }
-
-    // Silver = higher daily limit
-    if (tier === "silver") {
-      if (stats.dailyPredictionsUsed >= 20) {
-        return {
-          allowed: false,
-          reason: "Daily limit reached. Upgrade to Gold for unlimited predictions.",
-        }
-      }
-      return { allowed: true }
-    }
-
-    // Bronze = basic limit
-    if (stats.dailyPredictionsUsed >= 10) {
+  canMakePrediction(_tier = "bronze"): { allowed: boolean; reason?: string; remaining: number } {
+    const stats = this.getUserStats()
+    const remaining = Math.max(0, WEEKLY_PREDICTION_LIMIT - stats.weeklyPredictionsUsed)
+    if (remaining <= 0) {
       return {
         allowed: false,
-        reason: "Daily limit reached. Upgrade to Silver or Gold for more predictions.",
+        remaining: 0,
+        reason: `Weekly fun-pick limit reached. You can make ${WEEKLY_PREDICTION_LIMIT} predictions per week.`,
       }
     }
-    return { allowed: true }
-
-    return { allowed: true }
+    return { allowed: true, remaining }
   }
 
   watchedAd() {
@@ -190,36 +179,39 @@ class GamificationManager {
     this.saveUserStats(stats)
   }
 
-  savePrediction(matchId: string, homeScore: number, awayScore: number) {
-    if (typeof window === "undefined") return
+  savePrediction(matchId: string, homeScore: number, awayScore: number): { ok: boolean; reason?: string } {
+    if (typeof window === "undefined") return { ok: false, reason: "Predictions unavailable" }
+    const existing = this.getPrediction(matchId)
+    const allowance = this.canMakePrediction()
+    if (!existing && !allowance.allowed) return { ok: false, reason: allowance.reason }
 
     const predictions = this.getPredictions()
-    const prediction: UserPrediction = {
+    predictions[matchId] = {
       matchId,
       homeScore,
       awayScore,
       timestamp: Date.now(),
+      weekKey: this.getWeekKey(),
     }
-
-    predictions[matchId] = prediction
     localStorage.setItem(this.predictionsKey, JSON.stringify(predictions))
 
     const stats = this.getUserStats()
-    stats.dailyPredictionsUsed++
-    stats.predictionsCount++
-
-    // Award points for making a prediction
-    this.addPoints(POINTS_SYSTEM.predict_match, "Made prediction")
-
+    if (!existing) {
+      stats.predictionsCount++
+      stats.dailyPredictionsUsed++
+      stats.weeklyPredictionsUsed++
+      stats.totalPoints += PREDICTION_POINTS.submit
+      this.trackInteraction({ type: "predict", matchId, timestamp: Date.now(), points: PREDICTION_POINTS.submit })
+    }
+    this.applyLevel(stats)
     this.saveUserStats(stats)
+    return { ok: true }
   }
 
   getPredictions(): Record<string, UserPrediction> {
     if (typeof window === "undefined") return {}
-
     const stored = localStorage.getItem(this.predictionsKey)
     if (!stored) return {}
-
     try {
       return JSON.parse(stored)
     } catch {
@@ -228,69 +220,55 @@ class GamificationManager {
   }
 
   getPrediction(matchId: string): UserPrediction | null {
-    const predictions = this.getPredictions()
-    return predictions[matchId] || null
+    return this.getPredictions()[matchId] || null
   }
 
   evaluatePrediction(matchId: string, actualHomeScore: number, actualAwayScore: number) {
     const prediction = this.getPrediction(matchId)
-    if (!prediction) return
+    if (!prediction || prediction.result) return
 
     const stats = this.getUserStats()
+    const exact = prediction.homeScore === actualHomeScore && prediction.awayScore === actualAwayScore
+    const predictedDiff = prediction.homeScore - prediction.awayScore
+    const actualDiff = actualHomeScore - actualAwayScore
+    const outcomeCorrect = Math.sign(predictedDiff) === Math.sign(actualDiff)
+    const goalDiffCorrect = predictedDiff === actualDiff
+    const teamScoresCorrect =
+      (prediction.homeScore === actualHomeScore ? 1 : 0) +
+      (prediction.awayScore === actualAwayScore ? 1 : 0)
 
-    if (prediction.homeScore === actualHomeScore && prediction.awayScore === actualAwayScore) {
-      // Exact prediction
-      prediction.result = "correct"
-      prediction.pointsEarned = POINTS_SYSTEM.correct_prediction
-      stats.correctPredictions++
-      stats.streak++
-      this.addPoints(POINTS_SYSTEM.correct_prediction, "Correct prediction")
-    } else {
-      const homeCorrect =
-        Math.sign(prediction.homeScore - prediction.awayScore) === Math.sign(actualHomeScore - actualAwayScore)
-      if (homeCorrect) {
-        // Got the winner right
-        prediction.result = "close"
-        prediction.pointsEarned = POINTS_SYSTEM.close_prediction
-        this.addPoints(POINTS_SYSTEM.close_prediction, "Close prediction")
-      } else {
-        prediction.result = "wrong"
-        prediction.pointsEarned = 0
-        stats.streak = 0
-      }
-    }
+    const earned = exact
+      ? PREDICTION_POINTS.exactScore
+      : (outcomeCorrect ? PREDICTION_POINTS.correctOutcome : 0) +
+        (goalDiffCorrect ? PREDICTION_POINTS.correctGoalDifference : 0) +
+        teamScoresCorrect * PREDICTION_POINTS.oneTeamScore
 
-    // Update accuracy
-    stats.accuracy = (stats.correctPredictions / stats.predictionsCount) * 100
+    prediction.result = exact ? "correct" : earned > 0 ? "close" : "wrong"
+    prediction.pointsEarned = earned
+    if (exact) stats.correctPredictions++
+    stats.streak = earned > 0 ? stats.streak + 1 : 0
+    stats.totalPoints += earned
+    stats.accuracy = stats.predictionsCount > 0 ? (stats.correctPredictions / stats.predictionsCount) * 100 : 0
+    this.applyLevel(stats)
 
-    // Save updated prediction
     const predictions = this.getPredictions()
     predictions[matchId] = prediction
     localStorage.setItem(this.predictionsKey, JSON.stringify(predictions))
-
     this.saveUserStats(stats)
   }
 
   trackInteraction(interaction: UserInteraction) {
     if (typeof window === "undefined") return
-
     const interactions = this.getInteractions()
     interactions.push(interaction)
-
-    // Keep only last 100 interactions
-    if (interactions.length > 100) {
-      interactions.shift()
-    }
-
+    if (interactions.length > 100) interactions.shift()
     localStorage.setItem(this.interactionsKey, JSON.stringify(interactions))
   }
 
   getInteractions(): UserInteraction[] {
     if (typeof window === "undefined") return []
-
     const stored = localStorage.getItem(this.interactionsKey)
     if (!stored) return []
-
     try {
       return JSON.parse(stored)
     } catch {
@@ -298,34 +276,10 @@ class GamificationManager {
     }
   }
 
-  getLeaderboard(scope: "global" | "team" | "league" = "global", id?: string): LeaderboardEntry[] {
-    // In a real app, this would fetch from a backend API
-    // For now, return mock data
+  getLeaderboard(): LeaderboardEntry[] {
     return [
-      { userId: "1", username: "You", points: this.getUserStats().totalPoints, rank: 1, badge: "🏆" },
-      { userId: "2", username: "FootballFanatic", points: 5240, rank: 2, badge: "👑" },
-      { userId: "3", username: "ScorePredictorPro", points: 4890, rank: 3, badge: "⭐" },
-      { userId: "4", username: "SportsBuff2024", points: 4120, rank: 4, badge: "🔥" },
-      { userId: "5", username: "GoalGuesser", points: 3850, rank: 5, badge: "⚽" },
+      { userId: "1", username: "You", points: this.getUserStats().totalPoints, rank: 1, badge: "T" },
     ]
-  }
-
-  checkDailyStreak() {
-    const stats = this.getUserStats()
-    const interactions = this.getInteractions()
-
-    if (interactions.length === 0) return
-
-    const today = new Date().setHours(0, 0, 0, 0)
-    const hasInteractionToday = interactions.some((i) => {
-      const interactionDate = new Date(i.timestamp).setHours(0, 0, 0, 0)
-      return interactionDate === today
-    })
-
-    if (hasInteractionToday && stats.streak > 0) {
-      // Continue streak
-      this.addPoints(POINTS_SYSTEM.daily_streak, "Daily streak")
-    }
   }
 }
 

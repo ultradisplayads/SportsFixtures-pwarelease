@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { cachedProviderJson } from "@/lib/provider-cache"
 
 const API_KEY = process.env.SPORTSDB_API_KEY || "3"
 const API_URL = `https://www.thesportsdb.com/api/v1/json/${API_KEY}/eventshighlights.php`
@@ -12,15 +13,21 @@ export async function GET(request: NextRequest) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8000)
 
-    const response = await fetch(API_URL, {
-      cache: "no-store",
-      signal: controller.signal,
+    const payload = await cachedProviderJson({
+      provider: "sportsdb-v1",
+      endpoint: "GET:eventshighlights.php",
+      ttlSeconds: 1800,
+      fetcher: async () => {
+        const response = await fetch(API_URL, {
+          cache: "no-store",
+          signal: controller.signal,
+        })
+        if (!response.ok) throw new Error(`Highlights request failed: ${response.status}`)
+        return response.json()
+      },
     })
     clearTimeout(timeout)
 
-    if (!response.ok) throw new Error(`Highlights request failed: ${response.status}`)
-
-    const payload = await response.json()
     const events = Array.isArray(payload?.tvhighlights) ? payload.tvhighlights : []
 
     const items = events

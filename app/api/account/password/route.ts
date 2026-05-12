@@ -14,6 +14,7 @@ export async function POST(req: Request) {
   const authHeader = req.headers.get("authorization") || ""
   const jwt =
     authHeader.replace(/^Bearer\s+/i, "").trim() ||
+    cookieStore.get("sf_auth")?.value ||
     cookieStore.get("sf_jwt")?.value ||
     ""
 

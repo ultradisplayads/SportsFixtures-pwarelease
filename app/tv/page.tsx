@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { createPortal } from "react-dom"
 import {
-  Tv, Radio, Search, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Calendar, X, Crown, Lock,
+  Tv, Radio, Search, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Calendar, X, Crown, Lock, MapPin, LocateFixed, Users, BadgePercent,
 } from "lucide-react"
 import { HeaderMenu } from "@/components/header-menu"
 import { BottomNav } from "@/components/bottom-nav"
@@ -34,6 +34,29 @@ interface TVFixture {
   streamingServices: string[]
   thumbnail?: string | null
   isLive?: boolean
+}
+
+interface UserLocation {
+  lat: number
+  lng: number
+}
+
+interface NearbyVenue {
+  id: string
+  name: string
+  area?: string
+  city?: string
+  distanceKm?: number
+  screenCount?: number
+  offerCount?: number
+  openNow?: boolean
+  checkedInCount?: number
+  watchingHereCount?: number
+  crowdLabel?: string
+  reasons?: string[]
+  mapUrl?: string
+  website?: string
+  score?: number
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -91,6 +114,13 @@ function calLabel(d: Date) {
   if (sameDay(d, today)) return "Today"
   if (sameDay(d, addDays(today, 1))) return "Tomorrow"
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+}
+
+function sportMatchesFilter(value: string, filter: string) {
+  const rowSport = value.toLowerCase()
+  const selected = filter.toLowerCase()
+  if (selected === "football") return rowSport.includes("soccer") || rowSport.includes("football")
+  return rowSport.includes(selected)
 }
 
 // ─── Tiny Dropdown ────────────────────────────────────────────────────────────
@@ -218,7 +248,11 @@ function CalendarPicker({
     : { position: "fixed", top: 60, left: 16, zIndex: 9999, width: 288 }
 
   const panel = (
-    <div style={panelStyle} className="rounded-2xl border border-border bg-card p-3 shadow-xl">
+    <div
+      style={panelStyle}
+      className="rounded-2xl border border-border bg-card p-3 shadow-xl"
+      onMouseDown={(event) => event.stopPropagation()}
+    >
       {/* Month nav */}
       <div className="mb-2 flex items-center justify-between">
         <button
@@ -342,7 +376,199 @@ function StreamingChip({ name, url, isAffiliate }: { name: string; url: string; 
 
 // ─── TV Card (click to expand) ────────────────────────────────────────────────
 
-function TVCard({ fixture, tz }: { fixture: TVFixture; tz: string }) {
+function venueReasonLabel(venue: NearbyVenue) {
+  const reasons = new Set(venue.reasons ?? [])
+  if (reasons.has("showing_this_match")) return "Showing this match"
+  if (reasons.has("showing_this_competition")) return "Good for this league"
+  if (reasons.has("showing_this_sport")) return "Good for this sport"
+  if (venue.offerCount && venue.offerCount > 0) return "Offer nearby"
+  if (venue.openNow) return "Open now"
+  return "Nearby venue"
+}
+
+function scoreVenueForFixture(venue: NearbyVenue, fixture: TVFixture) {
+  const haystack = [
+    venue.name,
+    venue.area,
+    venue.city,
+    ...(venue.reasons ?? []),
+  ].join(" ").toLowerCase()
+
+  let score = venue.score ?? 0
+  if (venue.distanceKm != null) score += Math.max(0, 30 - venue.distanceKm * 2)
+  if (fixture.homeTeam && haystack.includes(fixture.homeTeam.toLowerCase())) score += 20
+  if (fixture.awayTeam && haystack.includes(fixture.awayTeam.toLowerCase())) score += 20
+  if (fixture.league && haystack.includes(fixture.league.toLowerCase())) score += 12
+  if (venue.openNow) score += 8
+  if ((venue.screenCount ?? 0) > 0) score += 6
+  if ((venue.offerCount ?? 0) > 0) score += 10
+  if ((venue.checkedInCount ?? 0) + (venue.watchingHereCount ?? 0) > 0) score += 8
+  return score
+}
+
+function WatchNearby({
+  fixture,
+  location,
+  radiusKm,
+  onUseLocation,
+  locationLoading,
+}: {
+  fixture: TVFixture
+  location: UserLocation | null
+  radiusKm: number
+  onUseLocation: () => void
+  locationLoading: boolean
+}) {
+  const [venues, setVenues] = useState<NearbyVenue[]>([])
+  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      setLoading(true)
+      try {
+        const qs = new URLSearchParams()
+        qs.set("eventId", fixture.id)
+        qs.set("sport", fixture.sport)
+        qs.set("maxDistanceKm", String(radiusKm))
+        if (location) {
+          qs.set("lat", String(location.lat))
+          qs.set("lng", String(location.lng))
+        }
+
+        const res = await fetch(`/api/venues/discovery?${qs}`, { cache: "no-store" })
+        const json = res.ok ? await res.json() : {}
+        const items: NearbyVenue[] = json?.data?.items ?? json?.items ?? []
+
+        const ranked = items
+          .filter((venue) => location ? venue.distanceKm == null || venue.distanceKm <= radiusKm : true)
+          .map((venue) => ({ ...venue, score: scoreVenueForFixture(venue, fixture) }))
+          .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+          .slice(0, 3)
+
+        if (!cancelled) setVenues(ranked)
+      } catch {
+        if (!cancelled) setVenues([])
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+          setLoaded(true)
+        }
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [fixture, location, radiusKm])
+
+  return (
+    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="flex items-center gap-1.5 text-xs font-bold">
+            <MapPin className="h-3.5 w-3.5 text-primary" />
+            Watch near you
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {location ? `Smart venues within ${radiusKm} km` : `Find venues showing ${fixture.sport} nearby`}
+          </p>
+        </div>
+        {!location && (
+          <button
+            onClick={onUseLocation}
+            disabled={locationLoading}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-bold text-primary-foreground disabled:opacity-60"
+            type="button"
+          >
+            <LocateFixed className="h-3 w-3" />
+            {locationLoading ? "Finding..." : "Use location"}
+          </button>
+        )}
+      </div>
+
+      {loading && (
+        <div className="grid gap-2 sm:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-16 animate-pulse rounded-lg bg-background/70" />
+          ))}
+        </div>
+      )}
+
+      {!loading && venues.length > 0 && (
+        <div className="grid gap-2 sm:grid-cols-3">
+          {venues.map((venue) => (
+            <Link
+              key={venue.id}
+              href={`/venues?search=${encodeURIComponent(venue.name)}`}
+              onClick={() => triggerHaptic("selection")}
+              className="rounded-lg border border-border bg-background p-2 transition-colors hover:border-primary"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 truncate text-xs font-bold">{venue.name}</p>
+                {venue.distanceKm != null && (
+                  <span className="shrink-0 text-[10px] font-semibold text-primary">
+                    {venue.distanceKm.toFixed(1)} km
+                  </span>
+                )}
+              </div>
+              <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                {[venue.area, venue.city].filter(Boolean).join(", ") || venueReasonLabel(venue)}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1">
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">
+                  {venueReasonLabel(venue)}
+                </span>
+                {(venue.screenCount ?? 0) > 0 && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-semibold">
+                    {venue.screenCount} screens
+                  </span>
+                )}
+                {(venue.offerCount ?? 0) > 0 && (
+                  <span className="flex items-center gap-0.5 rounded bg-green-500/10 px-1.5 py-0.5 text-[9px] font-bold text-green-700 dark:text-green-400">
+                    <BadgePercent className="h-2.5 w-2.5" />
+                    Offer
+                  </span>
+                )}
+                {((venue.checkedInCount ?? 0) + (venue.watchingHereCount ?? 0)) > 0 && (
+                  <span className="flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[9px] font-semibold">
+                    <Users className="h-2.5 w-2.5" />
+                    {(venue.checkedInCount ?? 0) + (venue.watchingHereCount ?? 0)}
+                  </span>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {!loading && loaded && venues.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-background/60 p-3 text-xs text-muted-foreground">
+          No matched venues yet. Add bars showing this event in Strapi and they will appear here automatically.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TVCard({
+  fixture,
+  tz,
+  location,
+  radiusKm,
+  onUseLocation,
+  locationLoading,
+}: {
+  fixture: TVFixture
+  tz: string
+  location: UserLocation | null
+  radiusKm: number
+  onUseLocation: () => void
+  locationLoading: boolean
+}) {
   const [expanded, setExpanded] = useState(false)
 
   const kickoff = fixture.date && fixture.time
@@ -433,6 +659,14 @@ function TVCard({ fixture, tz }: { fixture: TVFixture; tz: string }) {
             </div>
           )}
 
+          <WatchNearby
+            fixture={fixture}
+            location={location}
+            radiusKm={radiusKm}
+            onUseLocation={onUseLocation}
+            locationLoading={locationLoading}
+          />
+
           {/* Sport + League */}
           <div className="flex gap-3 text-xs text-muted-foreground">
             <span>{fixture.sport}</span>
@@ -464,7 +698,54 @@ export default function TVSchedulePage() {
   const [isEmpty, setIsEmpty] = useState(false)
   const [calOpen, setCalOpen] = useState(false)
   const [calAnchorRect, setCalAnchorRect] = useState<DOMRect | null>(null)
+  const [location, setLocation] = useState<UserLocation | null>(null)
+  const [locationLoading, setLocationLoading] = useState(false)
+  const [locationError, setLocationError] = useState<string | null>(null)
+  const [radiusKm, setRadiusKm] = useState(8)
   const calBtnRef = useRef<HTMLButtonElement>(null)
+
+  const quickDates = useMemo(() => {
+    const tomorrow = addDays(today, 1)
+    const day = today.getDay()
+    const saturday = addDays(today, (6 - day + 7) % 7)
+    const sunday = addDays(today, (7 - day + 7) % 7)
+    return [
+      { label: "Today", date: today },
+      { label: "Tomorrow", date: tomorrow },
+      { label: "Sat", date: saturday },
+      { label: "Sun", date: sunday },
+    ]
+  }, [today])
+
+  const requestLocation = useCallback(() => {
+    triggerHaptic("selection")
+    setLocationError(null)
+
+    if (!navigator.geolocation) {
+      setLocationError("Location is not available on this device.")
+      return
+    }
+
+    setLocationLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        })
+        setLocationLoading(false)
+      },
+      () => {
+        setLocationError("Location permission is needed for nearby venues.")
+        setLocationLoading(false)
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60_000,
+      },
+    )
+  }, [])
 
   // Close calendar on outside click
   useEffect(() => {
@@ -482,6 +763,17 @@ export default function TVSchedulePage() {
     const h = (e: Event) => setTz((e as CustomEvent).detail.tz)
     window.addEventListener("sf:timezone-change", h)
     return () => window.removeEventListener("sf:timezone-change", h)
+  }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const dateParam = params.get("date")
+    const queryParam = params.get("q") || params.get("search")
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      const parsed = new Date(`${dateParam}T00:00:00`)
+      if (!Number.isNaN(parsed.getTime())) setSelectedDate(parsed)
+    }
+    if (queryParam) setSearch(queryParam)
   }, [])
 
   // Derive dateKey from selectedDate
@@ -531,7 +823,7 @@ export default function TVSchedulePage() {
 
   const filtered = useMemo(() => {
     let list = fixtures
-    if (sportFilter !== "All Sports") list = list.filter((f) => f.sport?.toLowerCase().includes(sportFilter.toLowerCase()))
+    if (sportFilter !== "All Sports") list = list.filter((f) => sportMatchesFilter(f.sport || "", sportFilter))
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(
@@ -615,6 +907,27 @@ export default function TVSchedulePage() {
             onChange={setSportFilter}
           />
 
+          <button
+            onClick={requestLocation}
+            disabled={locationLoading}
+            className={`flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+              location
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-card hover:bg-accent"
+            }`}
+            type="button"
+          >
+            <LocateFixed className="h-3.5 w-3.5 shrink-0" />
+            {locationLoading ? "Finding..." : location ? "Near me on" : "Near me"}
+          </button>
+
+          <Dropdown
+            label="Radius"
+            value={`${radiusKm} km`}
+            options={["2 km", "5 km", "8 km", "15 km", "25 km"]}
+            onChange={(value) => setRadiusKm(Number(value.split(" ")[0]) || 8)}
+          />
+
           {/* Upgrade pill — shown for Bronze users */}
           {isBronze && (
             <Link
@@ -638,6 +951,33 @@ export default function TVSchedulePage() {
           )}
         </div>
 
+        <div className="flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-hide">
+          {quickDates.map(({ label, date }) => {
+            const active = sameDay(selectedDate, date)
+            return (
+              <button
+                key={label}
+                onClick={() => {
+                  setSelectedDate(date)
+                  setCalOpen(false)
+                  triggerHaptic("selection")
+                }}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  active
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground hover:bg-accent"
+                }`}
+                type="button"
+              >
+                {label}
+                <span className="ml-1 font-normal opacity-80">
+                  {date.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
         {/* Search + right-edge Quirk slot */}
         <div className="relative flex items-center gap-2 px-4 pb-3">
           <div className="relative flex-1">
@@ -652,6 +992,12 @@ export default function TVSchedulePage() {
           {/* Quirk blank-space slot — right of search bar */}
           <div ref={quirkSearchRef} className="h-9 w-12 shrink-0" aria-hidden="true" />
         </div>
+
+        {locationError && (
+          <div className="px-4 pb-3 text-xs font-medium text-red-600 dark:text-red-400">
+            {locationError}
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -683,7 +1029,17 @@ export default function TVSchedulePage() {
                   <h2 className="text-xs font-bold uppercase tracking-widest">Live Now</h2>
                 </div>
                 <div className="space-y-2">
-                  {liveFixtures.map((f) => <TVCard key={f.id} fixture={f} tz={tz} />)}
+                  {liveFixtures.map((f) => (
+                    <TVCard
+                      key={f.id}
+                      fixture={f}
+                      tz={tz}
+                      location={location}
+                      radiusKm={radiusKm}
+                      onUseLocation={requestLocation}
+                      locationLoading={locationLoading}
+                    />
+                  ))}
                 </div>
               </section>
             )}
@@ -745,7 +1101,14 @@ export default function TVSchedulePage() {
                 {upcoming.map((f, i) => (
                   <div key={f.id}>
                     <AdInjectionRow groupIndex={i} every={6} placement="tv" />
-                    <TVCard fixture={f} tz={tz} />
+                    <TVCard
+                      fixture={f}
+                      tz={tz}
+                      location={location}
+                      radiusKm={radiusKm}
+                      onUseLocation={requestLocation}
+                      locationLoading={locationLoading}
+                    />
                   </div>
                 ))}
               </div>
@@ -758,5 +1121,3 @@ export default function TVSchedulePage() {
     </div>
   )
 }
-
-

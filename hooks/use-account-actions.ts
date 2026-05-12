@@ -24,7 +24,6 @@ export function useAccountActions() {
 
   function authHeaders(): Record<string, string> {
     const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (user?.jwt) h["Authorization"] = `Bearer ${user.jwt}`
     if (deviceToken) h["x-device-token"] = deviceToken
     return h
   }
@@ -46,7 +45,7 @@ export function useAccountActions() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user?.jwt, deviceToken],
+    [user?.id, deviceToken],
   )
 
   // ── Change password ───────────────────────────────────────────────────────
@@ -66,7 +65,7 @@ export function useAccountActions() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user?.jwt, deviceToken],
+    [user?.id, deviceToken],
   )
 
   // ── Save consent ──────────────────────────────────────────────────────────
@@ -95,7 +94,7 @@ export function useAccountActions() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user?.jwt, deviceToken],
+    [user?.id, deviceToken],
   )
 
   // ── Delete account ────────────────────────────────────────────────────────
@@ -115,7 +114,7 @@ export function useAccountActions() {
       return { success: false, error: err?.message || "Failed to delete account" }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.jwt, deviceToken])
+  }, [user?.id, deviceToken])
 
   return { updateProfile, changePassword, saveConsent, deleteAccount }
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { requireAdminSession } from "@/lib/server/admin-auth"
 
 const STRAPI = () =>
   (process.env.SF_API_URL || "http://localhost:1337")
@@ -9,6 +10,9 @@ export async function PUT(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const session = await requireAdminSession(req)
+  if (!session.ok) return session.response
+
   try {
     const { id } = await context.params
     const body = await req.json()
@@ -17,13 +21,16 @@ export async function PUT(
       `${STRAPI()}/api/watch-venues/${id}/xibo/settings`,
       {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${session.jwt}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(body),
       }
     )
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch {
-    return NextResponse.json({ error: "Failed to update Xibo settings" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to update display settings" }, { status: 500 })
   }
 }

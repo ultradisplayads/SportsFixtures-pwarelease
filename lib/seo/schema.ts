@@ -32,6 +32,26 @@ export function organizationSchema() {
   }
 }
 
+export function brandSchema(args: {
+  name: string
+  path: string
+  description: string
+  domain?: string
+  parentName?: string
+}) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Brand",
+    name: args.name,
+    url: absoluteUrl(args.path),
+    description: args.description,
+    ...(args.domain ? { sameAs: [`https://${args.domain}`] } : {}),
+    ...(args.parentName
+      ? { parentOrganization: { "@type": "Organization", name: args.parentName } }
+      : {}),
+  }
+}
+
 export function breadcrumbSchema(items: Array<{ name: string; path: string }>) {
   return {
     "@context": "https://schema.org",

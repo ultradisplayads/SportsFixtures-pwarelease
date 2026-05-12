@@ -14,6 +14,7 @@ import type {
 export const REMINDER_OPTIONS: ReminderOffset[] = [
   "24h",
   "12h",
+  "8h",
   "3h",
   "1h",
   "30m",
@@ -21,11 +22,12 @@ export const REMINDER_OPTIONS: ReminderOffset[] = [
   "5m",
 ]
 
-export const DEFAULT_REMINDER_OFFSETS: ReminderOffset[] = ["1h", "15m"]
+export const DEFAULT_REMINDER_OFFSETS: ReminderOffset[] = ["24h", "8h", "1h", "5m"]
 
 export const REMINDER_LABELS: Record<ReminderOffset, string> = {
   "24h": "24 hours before",
   "12h": "12 hours before",
+  "8h":  "8 hours before",
   "3h":  "3 hours before",
   "1h":  "1 hour before",
   "30m": "30 minutes before",
@@ -37,6 +39,7 @@ export function reminderOffsetToMs(offset: ReminderOffset): number {
   switch (offset) {
     case "24h": return 24 * 60 * 60 * 1000
     case "12h": return 12 * 60 * 60 * 1000
+    case "8h":  return  8 * 60 * 60 * 1000
     case "3h":  return  3 * 60 * 60 * 1000
     case "1h":  return      60 * 60 * 1000
     case "30m": return      30 * 60 * 1000
@@ -61,6 +64,9 @@ export function categoryToTier(category: AlertCategory): NotificationTier {
       return "tier1"
     case "kickoff":
     case "lineups":
+    case "predicted_lineups":
+    case "yellow_card":
+    case "substitution":
     case "half_time":
     case "extra_time":
     case "penalties":
@@ -68,8 +74,14 @@ export function categoryToTier(category: AlertCategory): NotificationTier {
     case "cancelled":
       return "tier2"
     case "match_reminder":
+    case "match_preview":
+    case "video_highlights":
     case "venue_offer":
+    case "venue_recommendation":
+    case "partner_offer":
+    case "geofence_offer":
     case "transfer_news":
+    case "player_news":
     default:
       return "tier3"
   }
@@ -77,19 +89,28 @@ export function categoryToTier(category: AlertCategory): NotificationTier {
 
 export const CATEGORY_LABELS: Record<AlertCategory, string> = {
   match_reminder: "Match Reminder",
+  match_preview:  "Match Preview",
   kickoff:        "Kick-off",
   lineups:        "Lineups",
+  predicted_lineups: "Predicted Lineups",
   goal:           "Goal",
   red_card:       "Red Card",
+  yellow_card:    "Yellow Card",
+  substitution:   "Substitution",
   half_time:      "Half Time",
   extra_time:     "Extra Time",
   penalties:      "Penalties",
   full_time:      "Full Time",
   postponed:      "Postponed",
   cancelled:      "Cancelled",
+  video_highlights: "Highlights",
   venue_offer:    "Venue Offer",
+  venue_recommendation: "Venue Recommendation",
+  partner_offer:  "Partner Offer",
+  geofence_offer: "Area Offer",
   breaking_news:  "Breaking News",
   transfer_news:  "Transfer News",
+  player_news:    "Player News",
 }
 
 export const TIER_LABELS: Record<NotificationTier, string> = {
@@ -99,14 +120,37 @@ export const TIER_LABELS: Record<NotificationTier, string> = {
 }
 
 // Categories that are commercial / must be explicitly opted-in
-export const COMMERCIAL_CATEGORIES: AlertCategory[] = ["venue_offer", "transfer_news"]
+export const COMMERCIAL_CATEGORIES: AlertCategory[] = [
+  "venue_offer",
+  "venue_recommendation",
+  "partner_offer",
+  "geofence_offer",
+]
 
 // Default enabled categories
 export const DEFAULT_ENABLED_CATEGORIES: AlertCategory[] = [
   "match_reminder",
   "kickoff",
+  "lineups",
+  "predicted_lineups",
   "goal",
+  "red_card",
+  "yellow_card",
+  "substitution",
+  "half_time",
+  "extra_time",
+  "penalties",
   "full_time",
+  "postponed",
+  "cancelled",
+  "video_highlights",
+  "venue_recommendation",
+  "venue_offer",
+  "partner_offer",
+  "geofence_offer",
+  "breaking_news",
+  "transfer_news",
+  "player_news",
 ]
 
 // ── Deep-link builder ─────────────────────────────────────────────────────────
@@ -217,7 +261,13 @@ export function shouldDeliverNotification(input: DeliveryGateInput): boolean {
   ) return false
 
   if (input.category === "breaking_news" && !input.allowBreakingNews) return false
-  if (input.category === "venue_offer"   && !input.allowVenueOffers)  return false
+  if (
+    (input.category === "venue_offer" ||
+      input.category === "venue_recommendation" ||
+      input.category === "partner_offer" ||
+      input.category === "geofence_offer") &&
+    !input.allowVenueOffers
+  ) return false
   if (input.category === "transfer_news" && !input.allowTransferNews) return false
 
   if (input.quietHoursEnabled) {
@@ -279,10 +329,10 @@ export function buildDefaultNotificationPrefs(timezone?: string): NotificationPr
     defaultReminderOffsets: DEFAULT_REMINDER_OFFSETS,
     enabledCategories: DEFAULT_ENABLED_CATEGORIES,
     disabledCategories: [],
-    tierEnabled: { tier1: true, tier2: true, tier3: false },
-    allowBreakingNews: false,
-    allowVenueOffers: false,
-    allowTransferNews: false,
+    tierEnabled: { tier1: true, tier2: true, tier3: true },
+    allowBreakingNews: true,
+    allowVenueOffers: true,
+    allowTransferNews: true,
   }
 }
 

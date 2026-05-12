@@ -14,6 +14,7 @@ export const LEAGUES_BY_COUNTRY: Record<string, string[]> = {
   thailand: ["4346", "4347"], // Thai League 1 & 2
   europe: ["4480"], // Champions League
   usa: ["4346"], // MLS — placeholder
+  "united-states": ["4346"], // MLS placeholder until Strapi/API mapping is complete
 }
 
 // League IDs by sport slug

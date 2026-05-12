@@ -1,6 +1,14 @@
 "use server"
 
 // Server Actions for SportsDB API - keeps API key secure
+import {
+  getApiFootballLeagueTable,
+  getApiFootballLiveScores,
+  getApiFootballNextEvents,
+  getApiFootballPastEvents,
+  hasApiFootballKey,
+} from "@/lib/api-football"
+import { cachedProviderJson } from "@/lib/provider-cache"
 
 const SPORTSDB_API_KEY = process.env.SPORTSDB_API_KEY || "3"
 // Note: Free key "3" only supports v1. A paid key unlocks v2 (live scores, full TV data).
@@ -87,7 +95,7 @@ async function fetchV2(endpoint: string): Promise<any> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
 
-  try {
+  const fetcher = async () => {
     const response = await fetch(`${API_BASE_V2}/${endpoint}`, {
       headers: { "X-API-KEY": SPORTSDB_API_KEY },
       cache: "no-store",
@@ -104,6 +112,16 @@ async function fetchV2(endpoint: string): Promise<any> {
     const text = await response.text()
     if (!text || text.trim() === "" || text.trim() === "null") return {}
     try { return JSON.parse(text) } catch { return {} }
+  }
+
+  try {
+    return await cachedProviderJson({
+      provider: "sportsdb-v2",
+      endpoint: `GET:${endpoint}`,
+      ttlSeconds: endpoint.startsWith("livescore/") ? 15 : 300,
+      fetcher,
+      cacheNull: true,
+    })
   } catch {
     // Swallow all errors — 400/401/403 from premium endpoints and network
     // failures must never surface as uncaught errors in the preview overlay.
@@ -115,8 +133,23 @@ async function fetchV2(endpoint: string): Promise<any> {
 
 // V1 API call
 async function fetchV1(endpoint: string): Promise<any> {
+  return cachedProviderJson({
+    provider: "sportsdb-v1",
+    endpoint: `GET:${endpoint}`,
+    ttlSeconds:
+      endpoint.startsWith("lookupevent.php") ? 60 :
+      endpoint.startsWith("eventslast.php") || endpoint.startsWith("eventspast") ? 300 :
+      endpoint.startsWith("eventsnext") ? 120 :
+      endpoint.startsWith("lookuptable.php") ? 900 :
+      1800,
+    cacheNull: true,
+    fetcher: () => fetchV1Network(endpoint),
+  })
+}
+
+async function fetchV1Network(endpoint: string): Promise<any> {
   const response = await fetch(`${API_BASE_V1}/${SPORTSDB_API_KEY}/${endpoint}`, {
-    next: { revalidate: 30 },
+    cache: "no-store",
   })
 
   if (!response.ok) {
@@ -140,6 +173,11 @@ async function fetchV1(endpoint: string): Promise<any> {
 // Server Actions
 export async function getLiveScores(sport = "soccer"): Promise<LiveScore[]> {
   try {
+    if ((sport === "soccer" || sport === "football") && hasApiFootballKey()) {
+      const apiFootballScores = await getApiFootballLiveScores()
+      if (apiFootballScores.length > 0) return apiFootballScores
+    }
+
     const data = await fetchV2(`livescore/${sport}`)
     return data.livescores || []
   } catch (error) {
@@ -150,6 +188,11 @@ export async function getLiveScores(sport = "soccer"): Promise<LiveScore[]> {
 
 export async function getNextEvents(leagueId: string): Promise<Event[]> {
   try {
+    if (hasApiFootballKey()) {
+      const apiFootballEvents = await getApiFootballNextEvents(leagueId)
+      if (apiFootballEvents.length > 0) return apiFootballEvents
+    }
+
     const data = await fetchV1(`eventsnextleague.php?id=${leagueId}`)
     return data.events || []
   } catch (error) {
@@ -160,6 +203,11 @@ export async function getNextEvents(leagueId: string): Promise<Event[]> {
 
 export async function getPastEvents(leagueId: string): Promise<Event[]> {
   try {
+    if (hasApiFootballKey()) {
+      const apiFootballEvents = await getApiFootballPastEvents(leagueId)
+      if (apiFootballEvents.length > 0) return apiFootballEvents
+    }
+
     const data = await fetchV1(`eventspastleague.php?id=${leagueId}`)
     return data.events || []
   } catch (error) {
@@ -213,6 +261,11 @@ export async function getHeadToHead(team1Id: string, team2Id: string, leagueId: 
 }
 
 export async function getLeagueTable(leagueId: string, season?: string): Promise<TableEntry[]> {
+  if (!season && hasApiFootballKey()) {
+    const apiFootballTable = await getApiFootballLeagueTable(leagueId)
+    if (apiFootballTable.length > 0) return apiFootballTable
+  }
+
   // Build a list of seasons to try: provided value → hyphenated → single year
   const currentYear = new Date().getFullYear()
   const seasonsToTry = season
@@ -285,6 +338,16 @@ export async function getNextEventsByTeam(teamId: string): Promise<Event[]> {
     return data.events || []
   } catch (error) {
     console.error("Error fetching next events by team:", error)
+    return []
+  }
+}
+
+export async function getPastEventsByTeam(teamId: string): Promise<Event[]> {
+  try {
+    const data = await fetchV1(`eventslast.php?id=${teamId}`)
+    return data.results || data.events || []
+  } catch (error) {
+    console.error("Error fetching past events by team:", error)
     return []
   }
 }

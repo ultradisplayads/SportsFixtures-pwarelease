@@ -9,6 +9,12 @@ export type PushSupportState =
 
 export type PushPermissionState = NotificationPermission | "unsupported"
 
+type PushSyncOptions = {
+  endpoint: string
+  keys?: PushSubscriptionJSON["keys"]
+  method?: "POST" | "PATCH"
+}
+
 /**
  * Returns the current push permission state without triggering a prompt.
  */
@@ -53,6 +59,67 @@ async function fetchVapidPublicKey(): Promise<string> {
   return publicKey
 }
 
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback))
+  } catch {
+    return fallback
+  }
+}
+
+async function syncPushSubscription({ endpoint, keys, method = "POST" }: PushSyncOptions) {
+  const favourites = readJson<Array<{ entity_type: string; entity_id: string }>>("sf_favourites_cache", [])
+  const prefs = readJson<Record<string, any>>("sf_notification_prefs_v1", {})
+  const location = readJson<{ latitude?: number; longitude?: number; country?: string } | null>("userLocation", null)
+
+  await fetch("/api/push/subscribe", {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      endpoint,
+      keys,
+      deviceToken: getDeviceToken(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      country: location?.country || Intl.DateTimeFormat().resolvedOptions().locale?.split("-")[1] || null,
+      lat: location?.latitude ?? null,
+      lng: location?.longitude ?? null,
+      preferences: {
+        matchStart: prefs.enabled_categories?.includes("kickoff") ?? true,
+        goals: prefs.enabled_categories?.includes("goal") ?? true,
+        halftime: prefs.enabled_categories?.includes("half_time") ?? true,
+        fulltime: prefs.enabled_categories?.includes("full_time") ?? true,
+        cards: (prefs.enabled_categories?.includes("red_card") || prefs.enabled_categories?.includes("yellow_card")) ?? true,
+        lineups: prefs.enabled_categories?.includes("lineups") ?? true,
+        venueOffers: prefs.allow_venue_offers ?? true,
+        advertising: true,
+      },
+      followedTeams: favourites.filter((fav) => fav.entity_type === "team").map((fav) => fav.entity_id),
+      followedLeagues: favourites
+        .filter((fav) => fav.entity_type === "league" || fav.entity_type === "competition")
+        .map((fav) => fav.entity_id),
+      reminderOffsets: prefs.default_reminder_offsets || ["24h", "8h", "1h", "5m"],
+      categories: prefs.enabled_categories || [
+        "goal",
+        "kickoff",
+        "match_reminder",
+        "lineups",
+        "predicted_lineups",
+        "half_time",
+        "full_time",
+        "red_card",
+        "yellow_card",
+        "substitution",
+        "venue_recommendation",
+        "venue_offer",
+        "partner_offer",
+        "geofence_offer",
+        "breaking_news",
+        "transfer_news",
+      ],
+    }),
+  })
+}
+
 /**
  * Gets or creates the push subscription and persists it to the database.
  * Uses the existing /api/push/subscribe endpoint.
@@ -67,7 +134,15 @@ export async function registerPushSubscription(): Promise<PushSubscription> {
 
   // Return existing subscription if already registered
   const existing = await registration.pushManager.getSubscription()
-  if (existing) return existing
+  if (existing) {
+    const existingJson = existing.toJSON()
+    await syncPushSubscription({
+      endpoint: existingJson.endpoint || existing.endpoint,
+      keys: existingJson.keys,
+      method: "PATCH",
+    })
+    return existing
+  }
 
   const vapidPublicKey = await fetchVapidPublicKey()
   const convertedKey = urlBase64ToUint8Array(vapidPublicKey)
@@ -79,18 +154,10 @@ export async function registerPushSubscription(): Promise<PushSubscription> {
 
   const subJson = subscription.toJSON()
 
-  // Persist to DB via existing subscribe endpoint
-  const deviceToken = getDeviceToken()
-  await fetch("/api/push/subscribe", {
+  await syncPushSubscription({
+    endpoint: subJson.endpoint || subscription.endpoint,
+    keys: subJson.keys,
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      endpoint: subJson.endpoint,
-      keys: subJson.keys,
-      deviceToken,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      country: Intl.DateTimeFormat().resolvedOptions().locale?.split("-")[1] ?? null,
-    }),
   })
 
   return subscription

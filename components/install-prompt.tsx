@@ -52,7 +52,7 @@ export function InstallPrompt() {
   if (!showBanner || dismissed) return null
 
   return (
-    <div className="fixed bottom-20 left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 animate-in slide-in-from-bottom-4 duration-300">
+    <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 animate-in slide-in-from-bottom-4 duration-300">
       <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
           <Download className="h-5 w-5 text-primary" />

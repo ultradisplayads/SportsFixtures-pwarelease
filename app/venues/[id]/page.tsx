@@ -17,6 +17,7 @@ import { AffiliateModule } from "@/components/affiliate-module"
 import { FollowButton } from "@/components/follow-button"
 import { VenueOffersStrip } from "@/components/venues/venue-offers-strip"
 import { VenueActionButtons } from "@/components/venues/venue-action-buttons"
+import { VenuePresencePanel } from "@/components/venues/venue-presence-panel"
 import JsonLd from "@/components/seo/json-ld"
 import AiSummaryBlock from "@/components/seo/ai-summary-block"
 import PageFactBlock from "@/components/seo/page-fact-block"
@@ -337,6 +338,13 @@ export default async function VenueDetailPage({ params }: Props) {
         <div className="rounded-2xl border border-border bg-card p-4">
           <VenueActionButtons venue={venue} prominentDirections />
         </div>
+
+        <VenuePresencePanel
+          venueId={venue.id}
+          initialCheckins={venue.checkedInCount}
+          initialWatchers={venue.watchingHereCount}
+          initialCrowdLabel={venue.crowdLabel}
+        />
 
         {/* Offers */}
         {(venue.offers?.length ?? 0) > 0 && (

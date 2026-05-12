@@ -25,6 +25,15 @@ export function useSubscription() {
       subscriptionManager.upgrade(tier, duration)
       setSubscription(subscriptionManager.getSubscription())
     },
+    redeem: (args: {
+      tier: SubscriptionTier
+      code: string
+      expiresAt?: string | Date | null
+      discountPercent?: number
+    }) => {
+      subscriptionManager.redeem(args)
+      setSubscription(subscriptionManager.getSubscription())
+    },
     cancel: () => {
       subscriptionManager.cancel()
       setSubscription(subscriptionManager.getSubscription())

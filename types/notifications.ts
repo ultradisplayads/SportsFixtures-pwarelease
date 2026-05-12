@@ -5,23 +5,32 @@
 
 export type NotificationTier = "tier1" | "tier2" | "tier3"
 
-export type ReminderOffset = "24h" | "12h" | "3h" | "1h" | "30m" | "15m" | "5m"
+export type ReminderOffset = "24h" | "12h" | "8h" | "3h" | "1h" | "30m" | "15m" | "5m"
 
 export type AlertCategory =
   | "match_reminder"
+  | "match_preview"
   | "kickoff"
   | "lineups"
+  | "predicted_lineups"
   | "goal"
   | "red_card"
+  | "yellow_card"
+  | "substitution"
   | "half_time"
   | "extra_time"
   | "penalties"
   | "full_time"
   | "postponed"
   | "cancelled"
+  | "video_highlights"
   | "venue_offer"
+  | "venue_recommendation"
+  | "partner_offer"
+  | "geofence_offer"
   | "breaking_news"
   | "transfer_news"
+  | "player_news"
 
 export type NotificationEntityType =
   | "team"
@@ -29,6 +38,8 @@ export type NotificationEntityType =
   | "player"
   | "venue"
   | "event"
+  | "offer"
+  | "campaign"
   | "news_topic"
 
 // ── Global preference profile ─────────────────────────────────────────────────
@@ -100,19 +111,28 @@ export type PushSubscriptionPayload = {
 /** Matches the `category` column values in notification_history. */
 export type NotificationCategory =
   | "match_reminder"
+  | "match_preview"
   | "kickoff"
   | "lineups"
+  | "predicted_lineups"
   | "goal"
   | "red_card"
+  | "yellow_card"
+  | "substitution"
   | "half_time"
   | "extra_time"
   | "penalties"
   | "full_time"
   | "postponed"
   | "cancelled"
+  | "video_highlights"
   | "venue_offer"
+  | "venue_recommendation"
+  | "partner_offer"
+  | "geofence_offer"
   | "breaking_news"
   | "transfer_news"
+  | "player_news"
 
 /** Row shape from the `notification_preferences` table. */
 export type NotificationPreferences = {

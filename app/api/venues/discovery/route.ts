@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { normaliseVenue } from "@/lib/venue-discovery"
-import { makeSuccessEnvelope, makeEmptyEnvelope } from "@/lib/contracts"
+import { makeSuccessEnvelope } from "@/lib/contracts"
 import {
   fetchControlPlaneSnapshot,
   getVenueBoostScore,
@@ -21,6 +21,34 @@ function getDefaultPhoto(category: string): string {
   if (category?.includes("cafe")) return "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800&q=80"
   if (category?.includes("pub")) return "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=800&q=80"
   return "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=800&q=80"
+}
+
+async function fetchEventContext(eventId?: string) {
+  if (!eventId) return null
+  try {
+    const res = await fetch(`${SF_API_URL}/api/events/${eventId}`, {
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
+      },
+    })
+    if (!res.ok) return null
+    const json = await res.json()
+    const event = json?.data || json
+    const date = event?.dateEvent || event?.strDate
+    const time = event?.strTime || event?.strTimeLocal
+    const eventStartAt = date && time ? `${date}T${String(time).endsWith("Z") ? time : `${time}Z`}` : undefined
+    return {
+      eventName: event?.strEvent || event?.name,
+      eventStartAt,
+      sport: event?.strSport || event?.sport?.name,
+      competitionId: event?.idLeague || event?.league?.idLeague || event?.league?.id,
+      teamIds: [event?.idHomeTeam, event?.idAwayTeam, event?.homeTeam?.id, event?.awayTeam?.id].filter(Boolean).map(String),
+    }
+  } catch {
+    return null
+  }
 }
 
 async function fetchSFVenues(qs: URLSearchParams): Promise<any[]> {
@@ -66,14 +94,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const userLat = latRaw ? parseFloat(latRaw) : undefined
   const userLng = lngRaw ? parseFloat(lngRaw) : undefined
   const followedIds = new Set(followedIdsRaw ? followedIdsRaw.split(",").filter(Boolean) : [])
+  const eventContext = await fetchEventContext(eventId)
+  const effectiveSport = sport || eventContext?.sport
+  const effectiveCompetitionId = competitionId || eventContext?.competitionId
+  for (const teamId of eventContext?.teamIds || []) followedIds.add(teamId)
 
   const sfQs = new URLSearchParams()
   sfQs.set("pagination[pageSize]", "80")
   if (userLat != null) sfQs.set("lat", String(userLat))
   if (userLng != null) sfQs.set("lng", String(userLng))
   sfQs.set("radius", String(maxDistanceKm))
-  if (sport) sfQs.set("filters[sports][$containsi]", sport)
-  if (eventId) sfQs.set("filters[showingEventIds][$contains]", eventId)
+  if (effectiveSport) sfQs.set("filters[sports][$containsi]", effectiveSport)
 
   try {
     let venueBoosts: any[] = []
@@ -107,27 +138,39 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       .map((raw) => {
         const venueId = String(raw.id ?? "")
         const { boosted, sponsorDisclosure } = getVenueBoostScore(venueBoosts, venueId, {
-          sport,
-          competitionId,
+          sport: effectiveSport,
+          competitionId: effectiveCompetitionId,
           eventId,
         })
         const boostedRaw = boosted
           ? { ...raw, editorialBoost: true, sponsored: raw.sponsored || sponsorDisclosure }
           : raw
-        return {
+        const normalised = normaliseVenue({
           ...boostedRaw,
           id: String(boostedRaw.id ?? ""),
           photoUrl: boostedRaw.photoUrl || getDefaultPhoto(boostedRaw.primaryCategory),
           sports: boostedRaw.sports_supported
             ? boostedRaw.sports_supported.split(";").map((s: string) => s.trim()).filter(Boolean)
+            : Array.isArray(boostedRaw.sports)
+            ? boostedRaw.sports
             : [],
-          facilities: [],
-          offers: [],
-          offerCount: 0,
-          showingEventIds: [],
-          reasons: [],
-          score: boostedRaw.sponsored ? 10 : 0,
-          showingNow: boostedRaw.sports_bar_signal === "Strong",
+          facilities: Array.isArray(boostedRaw.facilities) ? boostedRaw.facilities : [],
+          showingNow: boostedRaw.showingNow ?? boostedRaw.sports_bar_signal === "Strong",
+          openNow: boostedRaw.openNow ?? boostedRaw.isOpenNow ?? boostedRaw.open_now,
+        }, {
+          userLat,
+          userLng,
+          followedIds,
+          eventId,
+          competitionId: effectiveCompetitionId,
+          sport: effectiveSport,
+          eventStartAt: eventContext?.eventStartAt,
+        })
+
+        return {
+          ...normalised,
+          photoUrl: normalised.photoUrl || boostedRaw.photoUrl || getDefaultPhoto(boostedRaw.primaryCategory),
+          score: normalised.score ?? 0,
         }
       })
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
@@ -139,7 +182,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       items: cards,
       filters: { sports: allSports, facilities: allFacilities },
       locationUsed: userLat != null && userLng != null,
-      eventContext: eventId ? { eventId, competitionId, sport } : undefined,
+      eventContext: eventId ? { eventId, eventName: eventContext?.eventName, competitionId: effectiveCompetitionId, sport: effectiveSport } : undefined,
     }
 
     const envelope: NormalizedEnvelope<VenueDiscoveryResponse> = makeSuccessEnvelope({

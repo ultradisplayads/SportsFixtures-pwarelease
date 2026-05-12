@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { DEFAULT_PUSH_CATEGORIES, DEFAULT_REMINDER_OFFSETS } from "@/lib/push-repertoire"
 
 const SF_API_URL = (process.env.SF_API_URL || "https://staging-api.sportsfixtures.net").replace(/\/$/, "")
 const SF_API_TOKEN = process.env.SF_API_TOKEN || ""
@@ -41,13 +42,15 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
+export const PUT = PATCH
+
 function buildDefaultPrefs(timezone = "UTC") {
   return {
     pushEnabled: false, inAppEnabled: true, globalMute: false,
     quietHoursEnabled: false, quietHoursStart: "22:00", quietHoursEnd: "08:00",
-    timezone, defaultReminderOffsets: ["1h", "15m"],
-    enabledCategories: [], disabledCategories: [],
-    tierEnabled: { tier1: true, tier2: true, tier3: false },
-    allowBreakingNews: false, allowVenueOffers: false, allowTransferNews: false,
+    timezone, defaultReminderOffsets: DEFAULT_REMINDER_OFFSETS,
+    enabledCategories: DEFAULT_PUSH_CATEGORIES, disabledCategories: [],
+    tierEnabled: { tier1: true, tier2: true, tier3: true },
+    allowBreakingNews: false, allowVenueOffers: true, allowTransferNews: false,
   }
 }

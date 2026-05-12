@@ -11,7 +11,7 @@
  *   2. In-app notifications toggle + Global mute
  *   3. Alert priority tiers (tier1, tier2, tier3) — explicit controls
  *   4. All alert categories — ALL 14 categories exposed
- *   5. Optional channels (breaking news, transfer news, venue offers)
+ *   5. Optional editorial channels
  *   6. Default reminder offsets — full 7-step ladder (24h → 5m)
  *   7. Quiet hours
  *   8. Active subscriptions list
@@ -25,6 +25,7 @@ import {
 import { useNotifications } from "@/hooks/use-notifications"
 import { triggerHaptic } from "@/lib/haptic-feedback"
 import { registerPushSubscription } from "@/lib/push-registration"
+import { SPORTS_APP_ALERT_CATEGORIES } from "@/lib/push-repertoire"
 import type { NotificationCategory } from "@/types/notifications"
 
 // ── Full category definitions (all 14) ───────────────────────────────────────
@@ -38,22 +39,30 @@ const CATEGORY_DEFS: { id: NotificationCategory; label: string; description: str
   // Tier 2 — Important
   { id: "kickoff",       label: "Kick-off",        description: "Alert when a match starts" },
   { id: "lineups",       label: "Lineups",         description: "Alert when confirmed lineups are released" },
+  { id: "predicted_lineups", label: "Predicted Lineups", description: "Likely team news before confirmed lineups" },
   { id: "half_time",     label: "Half Time",       description: "Score at the break" },
+  { id: "yellow_card",   label: "Yellow Cards",    description: "Card alerts for followed matches" },
+  { id: "substitution",  label: "Substitutions",   description: "Substitution alerts for followed matches" },
   { id: "extra_time",    label: "Extra Time",      description: "Alert when extra time begins" },
   { id: "penalties",     label: "Penalties",       description: "Alert when a penalty shootout starts" },
   { id: "postponed",     label: "Postponed",       description: "Alert when a match is postponed" },
   { id: "cancelled",     label: "Cancelled",       description: "Alert when a match is cancelled" },
   // Tier 3 — Low priority
   { id: "match_reminder",label: "Match Reminders", description: "Alerts before kick-off based on your chosen offsets" },
+  { id: "match_preview", label: "Match Previews",  description: "Build-up content for followed teams" },
+  { id: "video_highlights", label: "Highlights",   description: "Video and post-match highlights" },
   { id: "transfer_news", label: "Transfer News",   description: "Rumours and confirmed signings for followed teams" },
-  { id: "venue_offer",   label: "Venue Offers",    description: "Deals from saved venues near upcoming matches" },
+  { id: "player_news",   label: "Player News",     description: "Injury, selection, and player-specific updates" },
 ]
+
+const COMMERCIAL_CATEGORY_DEFS = SPORTS_APP_ALERT_CATEGORIES.filter((category) => category.commercial)
 
 // ── Full 7-step reminder offset ladder ───────────────────────────────────────
 
 const OFFSET_DEFS: { value: string; label: string }[] = [
   { value: "24h", label: "24 hours" },
   { value: "12h", label: "12 hours" },
+  { value: "8h",  label: "8 hours"  },
   { value: "3h",  label: "3 hours"  },
   { value: "1h",  label: "1 hour"   },
   { value: "30m", label: "30 minutes" },
@@ -145,6 +154,7 @@ function SectionHeader({ icon: Icon, title }: { icon: React.ElementType; title: 
 export function NotificationPreferencesForm() {
   const { preferences, subscriptions, updatePreferences, unsubscribe, pushGranted } = useNotifications()
   const [requestingPush, setRequestingPush] = useState(false)
+  const [showCommercialPrefs, setShowCommercialPrefs] = useState(false)
 
   // ── Push enable handler ──────────────────────────────────────────────────────
   const handlePushToggle = useCallback(async (enabled: boolean) => {
@@ -303,7 +313,7 @@ export function NotificationPreferencesForm() {
         </div>
       </div>
 
-      {/* ── Optional channels (commercial — explicit opt-in) ── */}
+      {/* ── Optional editorial channels ── */}
       <SectionHeader icon={Newspaper} title="Other Alerts" />
       <div className="rounded-xl border border-border bg-card px-4 divide-y divide-border/60">
         <ToggleRow
@@ -318,12 +328,41 @@ export function NotificationPreferencesForm() {
           checked={preferences.allow_transfer_news}
           onChange={(v) => updatePreferences({ allow_transfer_news: v })}
         />
-        <ToggleRow
-          label="Venue offers"
-          description="Deals from saved venues near upcoming matches"
-          checked={preferences.allow_venue_offers}
-          onChange={(v) => updatePreferences({ allow_venue_offers: v })}
-        />
+      </div>
+
+      {/* ── Advanced commercial preferences ── */}
+      <div className="rounded-xl border border-border bg-card px-4">
+        <button
+          type="button"
+          onClick={() => setShowCommercialPrefs((value) => !value)}
+          className="flex w-full items-center justify-between py-3 text-left"
+        >
+          <span>
+            <span className="block text-sm font-medium text-foreground">Advanced offer preferences</span>
+            <span className="block text-xs text-muted-foreground">Venue and partner offers are personalised by default</span>
+          </span>
+          <span className="text-xs font-semibold text-primary">{showCommercialPrefs ? "Hide" : "Manage"}</span>
+        </button>
+        {showCommercialPrefs && (
+          <div className="border-t border-border/60">
+            <ToggleRow
+              label="Venue offers"
+              description="Deals from saved venues near upcoming matches"
+              checked={preferences.allow_venue_offers}
+              onChange={(v) => updatePreferences({ allow_venue_offers: v })}
+            />
+            {COMMERCIAL_CATEGORY_DEFS.map(({ id, label, description }) => (
+              <ToggleRow
+                key={id}
+                label={label}
+                description={description}
+                checked={preferences.enabled_categories.includes(id)}
+                onChange={() => toggleCategory(id)}
+                disabled={preferences.global_mute}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Quiet hours ── */}

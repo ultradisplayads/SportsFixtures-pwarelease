@@ -14,7 +14,7 @@
  *     colorFrom     Text  (Tailwind from-* class, e.g. "from-orange-500/10")
  *     colorTo       Text  (Tailwind to-* class,   e.g. "to-orange-600/5")
  *     isAffiliate   Boolean
- *     placement     Enumeration: "fixtures" | "home" | "tv" | "venues" | "all"  (default "all")
+ *     placement     Enumeration: "fixtures" | "home" | "tv" | "venues" | "news" | "all"  (default "all")
  *     active        Boolean (default true)
  *
  * Environment variables:
@@ -24,7 +24,7 @@
 
 import { SMART_ADS, type SmartAdEntry } from "@/lib/affiliate-registry"
 
-export type AdPlacement = "fixtures" | "home" | "tv" | "venues" | "all"
+export type AdPlacement = "fixtures" | "home" | "tv" | "venues" | "news" | "all"
 
 export interface StrapiAdSlot {
   id: number

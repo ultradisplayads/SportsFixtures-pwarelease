@@ -31,7 +31,7 @@ export function NotificationPermissionBanner() {
   }
 
   return (
-    <div className="fixed bottom-20 left-4 right-4 z-50 mx-auto max-w-md">
+    <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-4 right-4 z-50 mx-auto max-w-md">
       <div className="rounded-lg border border-border bg-card p-4 shadow-lg">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">

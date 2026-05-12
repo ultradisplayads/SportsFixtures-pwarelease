@@ -17,7 +17,16 @@ export function getDeviceToken(): string {
  * "competition" is a user-facing alias that maps to "league" in the DB.
  * The API route uses ON CONFLICT so both values are safe to persist.
  */
-export type EntityType = "team" | "league" | "competition" | "player" | "venue"
+export type EntityType =
+  | "team"
+  | "league"
+  | "competition"
+  | "player"
+  | "venue"
+  | "event"
+  | "sport"
+  | "country"
+  | "news"
 
 export interface Favourite {
   entity_type: EntityType

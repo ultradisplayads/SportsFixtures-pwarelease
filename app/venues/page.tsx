@@ -300,7 +300,7 @@ function VenueListCard({ venue }: { venue: VenueCard }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function VenuesPage() {
-  const { location, requestLocation, loading: locationLoading } = useLocation()
+  const { location, requestLocation, loading: locationLoading, error: locationError } = useLocation()
 
   const [sortMode, setSortMode] = useState<SortMode>("distance")
   const [searchQuery, setSearchQuery] = useState("")
@@ -349,6 +349,7 @@ export default function VenuesPage() {
   const activeFilterCount = [
     filters.maxDistanceKm != null,
     !!filters.offersOnly,
+    !!filters.foodOnly,
     !!filters.followedOnly,
     (filters.facilityKeys?.length ?? 0) > 0,
     (filters.venueTypes?.length ?? 0) > 0,
@@ -378,7 +379,7 @@ export default function VenuesPage() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" aria-hidden="true" />
             <input
               type="search"
-              placeholder="Search by name, city or country..."
+              placeholder="Search venues, teams, events, food..."
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="w-full rounded-xl border border-border bg-secondary/40 py-2.5 pl-9 pr-9 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:bg-background transition-colors"
@@ -411,6 +412,23 @@ export default function VenuesPage() {
             </button>
           ))}
           <div className="mx-1 h-5 w-px shrink-0 bg-border" />
+          <button
+            onClick={() => {
+              triggerHaptic("selection")
+              setFilters((prev: typeof filters) => ({ ...prev, foodOnly: !prev.foodOnly }))
+            }}
+            className={`shrink-0 rounded-xl border px-3.5 py-1.5 text-sm font-medium transition-colors ${
+              filters.foodOnly
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-card hover:bg-accent"
+            }`}
+            aria-pressed={!!filters.foodOnly}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <Utensils className="h-3.5 w-3.5" aria-hidden="true" />
+              Food
+            </span>
+          </button>
           <VenueFiltersSheet
             filters={filters}
             onFiltersChange={setFilters}
@@ -433,6 +451,14 @@ export default function VenuesPage() {
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   Find sports bars near you, or search by city or country above.
                 </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Uses browser/device GPS, Wi-Fi and cell location. VPN or IP location is not used for nearby venues.
+                </p>
+                {locationError && (
+                  <p className="mt-2 rounded-lg bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+                    {locationError}
+                  </p>
+                )}
                 <button
                   onClick={() => { triggerHaptic("medium"); requestLocation() }}
                   disabled={locationLoading}

@@ -17,7 +17,7 @@ export function UpdatePrompt() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 px-4 w-full max-w-sm"
+      className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 z-50 w-full max-w-sm -translate-x-1/2 px-4"
     >
       <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-card px-4 py-3 shadow-lg">
         <RefreshCw className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getTVOverrides } from "@/lib/tv-overrides"
+import { cachedProviderJson } from "@/lib/provider-cache"
 
 const SF_API_URL = (
   process.env.SF_API_URL || "https://staging-api.sportsfixtures.net"
@@ -10,7 +12,15 @@ function formatDate(date: Date) {
   return date.toISOString().split("T")[0]
 }
 
+function isIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
 function getDateRange(mode: string) {
+  if (isIsoDate(mode)) {
+    return { startDate: mode, endDate: mode, isCustomDate: true }
+  }
+
   const now = new Date()
   const today = new Date(now)
   const tomorrow = new Date(now)
@@ -30,6 +40,37 @@ function getDateRange(mode: string) {
     default:
       return { startDate: formatDate(today), endDate: formatDate(today) }
   }
+}
+
+function normaliseSportParam(sport: string) {
+  if (sport.toLowerCase() === "football") return "Soccer"
+  return sport
+}
+
+function isBlockedTVRow(row: any) {
+  const haystack = [
+    row.event,
+    row.strEvent,
+    row.homeTeam,
+    row.awayTeam,
+    row.strHomeTeam,
+    row.strAwayTeam,
+    row.league,
+    row.strLeague,
+    row.competition,
+    row.strCountry,
+    ...(Array.isArray(row.channels) ? row.channels : []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+
+  return [
+    "israel",
+    "israeli",
+    "hapoel tel aviv",
+    "maccabi tel aviv",
+  ].some((term) => haystack.includes(term))
 }
 
 function normaliseEvents(rows: any[]) {
@@ -67,7 +108,7 @@ function normaliseEvents(rows: any[]) {
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const dateMode = searchParams.get("date") || "today"
-  const sport = searchParams.get("sport") || ""
+  const sport = normaliseSportParam(searchParams.get("sport") || "")
   const { startDate, endDate } = getDateRange(dateMode)
 
   try {
@@ -82,21 +123,37 @@ export async function GET(request: NextRequest) {
     if (sport) url.searchParams.set("sport", sport)
 
     const token = getSFToken()
-    const response = await fetch(url.toString(), {
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    const payload = await cachedProviderJson({
+      provider: "strapi",
+      endpoint: `GET:${url.pathname}${url.search}`,
+      ttlSeconds: 60,
+      staleWhileRevalidateSeconds: 3600,
+      fetcher: async () => {
+        const response = await fetch(url.toString(), {
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+
+        if (!response.ok) throw new Error(`TV request failed: ${response.status}`)
+        return response.json()
       },
     })
-
-    if (!response.ok) throw new Error(`TV request failed: ${response.status}`)
-
-    const payload = await response.json()
     const rows = Array.isArray(payload?.data) ? payload.data : []
+    const merged = [
+      ...normaliseEvents(rows),
+      ...getTVOverrides({ startDate, endDate, sport }),
+    ]
+      .filter((row, index, list) => {
+        const key = row.id || `${row.event}-${row.date}-${row.time}`
+        return list.findIndex((item) => (item.id || `${item.event}-${item.date}-${item.time}`) === key) === index
+      })
+      .filter((row) => !isBlockedTVRow(row))
 
     return NextResponse.json({
-      data: normaliseEvents(rows),
+      data: merged,
       usedFallbackData: false,
       range: { startDate, endDate },
     })

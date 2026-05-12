@@ -38,8 +38,8 @@ const DEFAULT_PREFS: PushPreferences = {
   fulltime: true,
   cards: false,
   lineups: false,
-  venueOffers: false,
-  advertising: false,
+  venueOffers: true,
+  advertising: true,
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -50,7 +50,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [isSubscribed, setIsSubscribed] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
   const [preferences, setPreferences] = useState<PushPreferences>(DEFAULT_PREFS)
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [location, setLocation] = useState<{
+    lat: number
+    lng: number
+    latitude?: number
+    longitude?: number
+    accuracy?: number
+    source?: "browser-geolocation"
+  } | null>(null)
 
   // Load current permission state
   useEffect(() => {
@@ -76,7 +83,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+          const loc = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            source: "browser-geolocation" as const,
+          }
           setLocation(loc)
           localStorage.setItem("userLocation", JSON.stringify(loc))
         },

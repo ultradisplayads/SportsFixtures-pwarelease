@@ -15,6 +15,10 @@ export type VenueDiscoveryInput = {
   showsSport?: boolean
   followedVenue?: boolean
   hasLiveOffer?: boolean
+  openNow?: boolean
+  hasScreens?: boolean
+  matchTimeFit?: boolean
+  crowdInterest?: boolean
   editorialBoost?: boolean
   sponsored?: boolean
 }
@@ -28,6 +32,10 @@ export const VENUE_SCORE_WEIGHTS = {
   followedVenue:    25,
   nearUser:         15,
   hasLiveOffer:     10,
+  openNow:          12,
+  hasScreens:        8,
+  matchTimeFit:     14,
+  crowdInterest:    12,
   editorialBoost:    8,
   sponsored:         5,
 } as const
@@ -64,6 +72,22 @@ export function scoreVenueCard(input: VenueDiscoveryInput): {
   if (input.hasLiveOffer) {
     score += VENUE_SCORE_WEIGHTS.hasLiveOffer
     reasons.push("has_live_offer")
+  }
+  if (input.openNow) {
+    score += VENUE_SCORE_WEIGHTS.openNow
+    reasons.push("open_now")
+  }
+  if (input.hasScreens) {
+    score += VENUE_SCORE_WEIGHTS.hasScreens
+    reasons.push("screens_available")
+  }
+  if (input.matchTimeFit) {
+    score += VENUE_SCORE_WEIGHTS.matchTimeFit
+    reasons.push("match_time_fit")
+  }
+  if (input.crowdInterest) {
+    score += VENUE_SCORE_WEIGHTS.crowdInterest
+    reasons.push("crowd_interest")
   }
   if (input.editorialBoost) {
     score += VENUE_SCORE_WEIGHTS.editorialBoost

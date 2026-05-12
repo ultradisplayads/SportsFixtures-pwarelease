@@ -1,20 +1,19 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Star, Clock, ChevronRight } from "lucide-react"
+import { ChevronRight, Clock, Star, Trophy } from "lucide-react"
 import Link from "next/link"
 import { triggerHaptic } from "@/lib/haptic-feedback"
-import { getFavourites, type Favourite } from "@/lib/favourites-api"
-import { getNextEventsByTeam } from "@/app/actions/sports-api"
+import { getCachedFavourites, getFavourites, type Favourite } from "@/lib/favourites-api"
+import { getNextEventsByTeam, getPastEventsByTeam } from "@/app/actions/sports-api"
 import { useSubscription } from "@/lib/use-subscription"
+import { AdInjection } from "@/components/ad-injection"
 import {
-  scoreHomeItem,
   buildRecommendationReason,
+  scoreHomeItem,
 } from "@/lib/personalization"
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface UpcomingMatch {
+interface TeamMatch {
   idEvent: string
   strHomeTeam: string
   strAwayTeam: string
@@ -23,55 +22,59 @@ interface UpcomingMatch {
   dateEvent: string
   strTime?: string
   strLeague?: string
-  /** The followed-entity name that triggered this result */
+  intHomeScore?: string | null
+  intAwayScore?: string | null
+  kind: "upcoming" | "result"
   followedName: string
-  /** Computed relevance score (higher = more relevant) */
   score: number
-  /** Human-readable reason shown as a badge */
   reason: string
 }
 
-// ── Scoring ───────────────────────────────────────────────────────────────────
+type RawTeamMatch = Omit<TeamMatch, "score" | "reason" | "followedName">
 
-/**
- * deriveMatchScore — uses the central personalization engine.
- *
- * Checks all follow types: team, league/competition, player, venue.
- * Returns the final score and a user-facing reason string.
- */
+const HOUSE_AD_ENABLED = process.env.NEXT_PUBLIC_ENABLE_HOUSE_ADS === "true"
+
+function mergeFavourites(primary: Favourite[], fallback: Favourite[]) {
+  const seen = new Set<string>()
+  return [...primary, ...fallback].filter((fav) => {
+    const key = `${fav.entity_type}:${fav.entity_id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function deriveMatchScore(
-  match: Omit<UpcomingMatch, "score" | "reason" | "followedName">,
-  favs: Favourite[]
+  match: RawTeamMatch,
+  favs: Favourite[],
 ): { score: number; reason: string; followedName: string } {
-  const teamFavs        = favs.filter((f) => f.entity_type === "team")
+  const teamFavs = favs.filter((f) => f.entity_type === "team")
   const competitionFavs = favs.filter(
-    (f) => f.entity_type === "league" || f.entity_type === "competition"
+    (f) => f.entity_type === "league" || f.entity_type === "competition",
   )
   const playerFavs = favs.filter((f) => f.entity_type === "player")
-  const venueFavs  = favs.filter((f) => f.entity_type === "venue")
+  const venueFavs = favs.filter((f) => f.entity_type === "venue")
 
-  let followedTeamName:        string | undefined
+  let followedTeamName: string | undefined
   let followedCompetitionName: string | undefined
-  let followedPlayerName:      string | undefined
-  let followedVenueName:       string | undefined
+  let followedPlayerName: string | undefined
+  let followedVenueName: string | undefined
 
-  // ── Direct team match ──────────────────────────────────────────────────────
-  for (const f of teamFavs) {
-    const name = f.entity_name || f.entity_id
-    const lo   = name.toLowerCase()
+  for (const fav of teamFavs) {
+    const name = fav.entity_name || fav.entity_id
+    const lowerName = name.toLowerCase()
     if (
-      match.strHomeTeam?.toLowerCase().includes(lo) ||
-      match.strAwayTeam?.toLowerCase().includes(lo)
+      match.strHomeTeam?.toLowerCase().includes(lowerName) ||
+      match.strAwayTeam?.toLowerCase().includes(lowerName)
     ) {
       followedTeamName = name
       break
     }
   }
 
-  // ── Competition / league match ─────────────────────────────────────────────
   if (!followedTeamName) {
-    for (const f of competitionFavs) {
-      const name = f.entity_name || f.entity_id
+    for (const fav of competitionFavs) {
+      const name = fav.entity_name || fav.entity_id
       if (match.strLeague?.toLowerCase().includes(name.toLowerCase())) {
         followedCompetitionName = name
         break
@@ -79,53 +82,45 @@ function deriveMatchScore(
     }
   }
 
-  // ── Player mention (best effort via league/match meta) ────────────────────
-  // Player-level filtering would need line-ups data; for now we mark it if
-  // the player's team appears in the match (indirect follow signal).
   if (!followedTeamName && !followedCompetitionName) {
-    for (const f of playerFavs) {
+    for (const fav of playerFavs) {
       const playerTeam = (
-        (f.entity_meta as Record<string, string> | undefined)?.team || ""
+        (fav.entity_meta as Record<string, string> | undefined)?.team || ""
       ).toLowerCase()
       if (
         playerTeam &&
         (match.strHomeTeam?.toLowerCase().includes(playerTeam) ||
           match.strAwayTeam?.toLowerCase().includes(playerTeam))
       ) {
-        followedPlayerName = f.entity_name || f.entity_id
+        followedPlayerName = fav.entity_name || fav.entity_id
         break
       }
     }
   }
 
-  // ── Venue match (if meta carries stadium info) ────────────────────────────
   if (!followedTeamName && !followedCompetitionName && !followedPlayerName) {
-    for (const f of venueFavs) {
-      const venueName = (f.entity_name || f.entity_id).toLowerCase()
-      const matchVenue = (
-        (match as Record<string, any>).strVenue || ""
-      ).toLowerCase()
+    for (const fav of venueFavs) {
+      const venueName = (fav.entity_name || fav.entity_id).toLowerCase()
+      const matchVenue = ((match as Record<string, unknown>).strVenue || "")
+        .toString()
+        .toLowerCase()
       if (matchVenue && matchVenue.includes(venueName)) {
-        followedVenueName = f.entity_name || f.entity_id
+        followedVenueName = fav.entity_name || fav.entity_id
         break
       }
     }
   }
 
-  // ── Temporal signals ───────────────────────────────────────────────────────
-  const matchDate = new Date(
-    `${match.dateEvent}T${match.strTime || "00:00"}Z`
-  )
+  const matchDate = new Date(`${match.dateEvent}T${match.strTime || "00:00"}Z`)
   const msUntil = matchDate.getTime() - Date.now()
-  const isLive    = msUntil < 0 && msUntil > -3 * 60 * 60 * 1000
+  const isLive = msUntil < 0 && msUntil > -3 * 60 * 60 * 1000
   const startsSoon = msUntil > 0 && msUntil < 3 * 60 * 60 * 1000
 
-  // ── Sport affinity (heuristic) ─────────────────────────────────────────────
   let sameSport = false
   if (!followedTeamName && !followedCompetitionName) {
-    for (const f of teamFavs) {
+    for (const fav of teamFavs) {
       const sport = (
-        (f.entity_meta as Record<string, string> | undefined)?.sport || ""
+        (fav.entity_meta as Record<string, string> | undefined)?.sport || ""
       ).toLowerCase()
       if (sport && match.strLeague?.toLowerCase().includes(sport)) {
         sameSport = true
@@ -134,22 +129,19 @@ function deriveMatchScore(
     }
   }
 
-  // ── Score via shared engine ────────────────────────────────────────────────
   const { score, reasons } = scoreHomeItem({
     isLive,
     startsSoon,
-    followedTeam:        !!followedTeamName,
+    followedTeam: !!followedTeamName,
     followedCompetition: !!followedCompetitionName,
-    followedPlayer:      !!followedPlayerName,
-    followedVenue:       !!followedVenueName,
+    followedPlayer: !!followedPlayerName,
+    followedVenue: !!followedVenueName,
     sameSport,
   })
 
-  // Recency decay for future matches (cap at 12h)
   const minutesUntil = Math.min(Math.max(msUntil / 60_000, 0), 720)
-  const finalScore = score - minutesUntil * 0.01
-
-  const reason =
+  const finalScore = match.kind === "result" ? score : score - minutesUntil * 0.01
+  const baseReason =
     buildRecommendationReason(match, {
       isLive,
       startsSoon,
@@ -158,24 +150,126 @@ function deriveMatchScore(
       followedPlayerName,
       followedVenueName,
     }) ??
-    (reasons[0]?.label || "Upcoming match")
+    reasons[0]?.label ??
+    "Your team"
 
-  const followedName =
-    followedTeamName ??
-    followedCompetitionName ??
-    followedPlayerName ??
-    followedVenueName ??
-    ""
-
-  return { score: finalScore, reason, followedName }
+  return {
+    score: finalScore,
+    reason: match.kind === "result" ? `Result - ${baseReason}` : baseReason,
+    followedName:
+      followedTeamName ??
+      followedCompetitionName ??
+      followedPlayerName ??
+      followedVenueName ??
+      "",
+  }
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+function formatMatchDate(match: TeamMatch) {
+  const matchDate = new Date(`${match.dateEvent}T${match.strTime || "00:00"}Z`)
+  const isToday = match.dateEvent === new Date().toISOString().split("T")[0]
+  return isToday
+    ? matchDate.toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : matchDate.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })
+}
 
-const HOUSE_AD_ENABLED = process.env.NEXT_PUBLIC_ENABLE_HOUSE_ADS === "true"
+function normaliseEvent(event: Record<string, any>, kind: TeamMatch["kind"]): RawTeamMatch {
+  return {
+    idEvent: event.idEvent,
+    strHomeTeam: event.strHomeTeam,
+    strAwayTeam: event.strAwayTeam,
+    strHomeTeamBadge: event.strHomeTeamBadge,
+    strAwayTeamBadge: event.strAwayTeamBadge,
+    dateEvent: event.dateEvent,
+    strTime: event.strTime,
+    strLeague: event.strLeague,
+    intHomeScore: event.intHomeScore,
+    intAwayScore: event.intAwayScore,
+    kind,
+  }
+}
+
+function MatchCard({ match }: { match: TeamMatch }) {
+  const isResult = match.kind === "result"
+  const scoreLine =
+    match.intHomeScore != null && match.intAwayScore != null
+      ? `${match.intHomeScore} - ${match.intAwayScore}`
+      : "FT"
+
+  return (
+    <Link
+      href={`/match/${match.idEvent}`}
+      onClick={() => triggerHaptic("selection")}
+      className="group w-44 shrink-0 rounded-lg border border-border bg-background p-3 transition-all hover:border-primary hover:shadow-md active:scale-95"
+    >
+      <p className="mb-2 truncate rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
+        {match.reason}
+      </p>
+
+      <div className="mb-1.5 flex items-center gap-2">
+        {match.strHomeTeamBadge && (
+          <img src={match.strHomeTeamBadge} alt="" className="h-5 w-5 object-contain" />
+        )}
+        <p className="min-w-0 flex-1 truncate text-xs font-semibold">
+          {match.strHomeTeam}
+        </p>
+        {isResult && (
+          <span className="text-xs font-bold tabular-nums">{match.intHomeScore ?? "-"}</span>
+        )}
+      </div>
+
+      <div className="mb-2 flex items-center gap-2">
+        {match.strAwayTeamBadge && (
+          <img src={match.strAwayTeamBadge} alt="" className="h-5 w-5 object-contain" />
+        )}
+        <p className="min-w-0 flex-1 truncate text-xs font-semibold">
+          {match.strAwayTeam}
+        </p>
+        {isResult && (
+          <span className="text-xs font-bold tabular-nums">{match.intAwayScore ?? "-"}</span>
+        )}
+      </div>
+
+      <div className="mt-1 flex items-center justify-between">
+        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+          {isResult ? <Trophy className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+          {isResult ? scoreLine : formatMatchDate(match)}
+        </span>
+        {match.strLeague && (
+          <span className="max-w-[70px] truncate text-[10px] text-primary">
+            {match.strLeague}
+          </span>
+        )}
+      </div>
+    </Link>
+  )
+}
+
+function MatchLane({ matches }: { matches: TeamMatch[] }) {
+  if (!matches.length) return null
+
+  return (
+    <section className="min-w-0">
+      <div className="overflow-x-auto">
+        <div className="flex gap-3 pb-2">
+          {matches.map((match) => (
+            <MatchCard key={`${match.kind}-${match.idEvent}`} match={match} />
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
 
 export function RecommendedMatches() {
-  const [matches, setMatches] = useState<UpcomingMatch[]>([])
+  const [upcoming, setUpcoming] = useState<TeamMatch[]>([])
+  const [results, setResults] = useState<TeamMatch[]>([])
   const [loading, setLoading] = useState(true)
   const { tier } = useSubscription()
 
@@ -183,45 +277,69 @@ export function RecommendedMatches() {
     async function load() {
       setLoading(true)
       try {
-        const favs  = await getFavourites()
+        const cachedFavs = getCachedFavourites()
+        const serverFavs = await getFavourites()
+        const favs = mergeFavourites(serverFavs, cachedFavs)
         const teams = favs.filter((f) => f.entity_type === "team").slice(0, 5)
-        if (!teams.length) { setLoading(false); return }
 
-        const results = await Promise.allSettled(
-          teams.map((t) =>
-            getNextEventsByTeam(t.entity_id).then((events) =>
-              events.slice(0, 2).map((e) => ({
-                idEvent:          e.idEvent,
-                strHomeTeam:      e.strHomeTeam,
-                strAwayTeam:      e.strAwayTeam,
-                strHomeTeamBadge: e.strHomeTeamBadge,
-                strAwayTeamBadge: e.strAwayTeamBadge,
-                dateEvent:        e.dateEvent,
-                strTime:          e.strTime,
-                strLeague:        e.strLeague,
-              }))
-            )
-          )
-        )
+        if (!teams.length) {
+          setLoading(false)
+          return
+        }
 
-        const rawMatches = results
-          .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
-          .filter((m) => m.idEvent && m.strHomeTeam)
-          .filter((m, i, arr) => arr.findIndex((x) => x.idEvent === m.idEvent) === i)
+        const [nextSettled, pastSettled] = await Promise.all([
+          Promise.allSettled(
+            teams.map((team) =>
+              getNextEventsByTeam(team.entity_id).then((events) =>
+                events.slice(0, 3).map((event) => normaliseEvent(event, "upcoming")),
+              ),
+            ),
+          ),
+          Promise.allSettled(
+            teams.map((team) =>
+              getPastEventsByTeam(team.entity_id).then((events) =>
+                events.slice(0, 3).map((event) => normaliseEvent(event, "result")),
+              ),
+            ),
+          ),
+        ])
 
-        const scored: UpcomingMatch[] = rawMatches.map((m) => {
-          const { score, reason, followedName } = deriveMatchScore(m, favs)
-          return { ...m, score, reason, followedName }
+        const rawUpcoming = nextSettled
+          .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
+          .filter((match) => match.idEvent && match.strHomeTeam)
+          .filter((match, index, list) => list.findIndex((item) => item.idEvent === match.idEvent) === index)
+
+        const rawResults = pastSettled
+          .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
+          .filter((match) => match.idEvent && match.strHomeTeam)
+          .filter((match, index, list) => list.findIndex((item) => item.idEvent === match.idEvent) === index)
+
+        const scoredUpcoming = rawUpcoming.map((match) => ({
+          ...match,
+          ...deriveMatchScore(match, favs),
+        }))
+
+        const scoredResults = rawResults.map((match) => ({
+          ...match,
+          ...deriveMatchScore(match, favs),
+        }))
+
+        scoredUpcoming.sort((a, b) => b.score - a.score)
+        scoredResults.sort((a, b) => {
+          const aTime = new Date(`${a.dateEvent}T${a.strTime || "00:00"}Z`).getTime()
+          const bTime = new Date(`${b.dateEvent}T${b.strTime || "00:00"}Z`).getTime()
+          return bTime - aTime
         })
 
-        scored.sort((a, b) => b.score - a.score)
-        setMatches(scored.slice(0, 6))
+        setUpcoming(scoredUpcoming.slice(0, 8))
+        setResults(scoredResults.slice(0, 8))
       } catch {
-        // fail silently — empty state shown
+        // Empty state is less noisy than a broken home module.
       } finally {
         setLoading(false)
       }
     }
+
     load()
   }, [])
 
@@ -241,90 +359,41 @@ export function RecommendedMatches() {
     )
   }
 
-  if (!matches.length) return null
+  if (!upcoming.length && !results.length) return null
 
   return (
     <div className="border-b border-border bg-card p-3">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Upcoming — Your Teams</h3>
-        <Star className="h-4 w-4 text-primary" />
+      <div className="mb-2 flex min-h-6 items-center gap-3">
+        <h2 className="shrink-0 text-sm font-semibold">Your Teams</h2>
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto text-[11px] font-semibold text-muted-foreground [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {upcoming.length > 0 && (
+            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+              Upcoming {Math.min(upcoming.length, 8)}
+            </span>
+          )}
+          {results.length > 0 && (
+            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5">
+              Results {Math.min(results.length, 8)}
+            </span>
+          )}
+        </div>
+        <Star className="h-4 w-4 shrink-0 text-primary" />
       </div>
-      <div className="overflow-x-auto">
-        <div className="flex gap-3 pb-2">
-          {matches.map((match) => {
-            const matchDate = new Date(
-              `${match.dateEvent}T${match.strTime || "00:00"}Z`
-            )
-            const isToday =
-              match.dateEvent === new Date().toISOString().split("T")[0]
-            const dateLabel = isToday
-              ? matchDate.toLocaleTimeString(undefined, {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : matchDate.toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                })
 
-            return (
-              <Link
-                key={match.idEvent}
-                href={`/match/${match.idEvent}`}
-                onClick={() => triggerHaptic("selection")}
-                className="group shrink-0 w-44 rounded-lg border border-border bg-background p-3 transition-all hover:border-primary hover:shadow-md active:scale-95"
-              >
-                {/* Reason badge */}
-                <p className="mb-2 truncate rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
-                  {match.reason}
-                </p>
+      <div className="grid gap-3 min-[900px]:grid-cols-2">
+        <MatchLane matches={upcoming} />
+        <MatchLane matches={results} />
+      </div>
 
-                <div className="flex items-center gap-2 mb-1.5">
-                  {match.strHomeTeamBadge && (
-                    <img
-                      src={match.strHomeTeamBadge}
-                      alt=""
-                      className="h-5 w-5 object-contain"
-                    />
-                  )}
-                  <p className="text-xs font-semibold truncate flex-1">
-                    {match.strHomeTeam}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 mb-2">
-                  {match.strAwayTeamBadge && (
-                    <img
-                      src={match.strAwayTeamBadge}
-                      alt=""
-                      className="h-5 w-5 object-contain"
-                    />
-                  )}
-                  <p className="text-xs font-semibold truncate flex-1">
-                    {match.strAwayTeam}
-                  </p>
-                </div>
+      <AdInjection placement="home" index={1} className="mt-2" />
 
-                <div className="flex items-center justify-between mt-1">
-                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    {dateLabel}
-                  </span>
-                  {match.strLeague && (
-                    <span className="text-[10px] text-primary truncate max-w-[70px]">
-                      {match.strLeague}
-                    </span>
-                  )}
-                </div>
-              </Link>
-            )
-          })}
-
-          {/* Native venue promo card — fills dead space for free tier */}
-          {HOUSE_AD_ENABLED && tier === "bronze" && (
+      {HOUSE_AD_ENABLED && tier === "bronze" && (
+        <div className="mt-2 overflow-x-auto">
+          <div className="flex gap-3 pb-2">
             <Link
               href="/venues"
               onClick={() => triggerHaptic("selection")}
-              className="group shrink-0 w-44 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 transition-all hover:border-primary hover:bg-primary/10 active:scale-95"
+              className="group w-44 shrink-0 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 transition-all hover:border-primary hover:bg-primary/10 active:scale-95"
             >
               <p className="text-[10px] font-semibold uppercase tracking-wider text-primary/70">
                 Find a venue
@@ -336,9 +405,9 @@ export function RecommendedMatches() {
                 Find venues <ChevronRight className="h-3 w-3" />
               </div>
             </Link>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

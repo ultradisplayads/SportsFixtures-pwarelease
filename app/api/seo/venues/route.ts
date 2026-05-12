@@ -17,7 +17,7 @@ export async function GET() {
     const STRAPI = process.env.STRAPI_URL
     if (STRAPI) {
       const res = await fetch(`${STRAPI}/api/venues?fields[0]=slug&fields[1]=updatedAt&pagination[pageSize]=500`, {
-        next: { revalidate: 3600 },
+        next: { revalidate: 300, tags: ["strapi", "seo", "sitemap", "strapi:venue"] },
         headers: process.env.STRAPI_API_TOKEN
           ? { Authorization: `Bearer ${process.env.STRAPI_API_TOKEN}` }
           : {},
@@ -31,12 +31,16 @@ export async function GET() {
         // Merge: Strapi takes precedence, local fills the rest
         const slugSet = new Set(strapiVenues.map((v: { slug: string }) => v.slug))
         const merged = [...strapiVenues, ...localVenues.filter((v) => !slugSet.has(v.slug))]
-        return NextResponse.json(merged)
+        return NextResponse.json(merged, {
+          headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=3600" },
+        })
       }
     }
   } catch {
     // Fall through to local only
   }
 
-  return NextResponse.json(localVenues)
+  return NextResponse.json(localVenues, {
+    headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=3600" },
+  })
 }

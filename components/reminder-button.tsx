@@ -12,7 +12,7 @@
  * here because kickoff is modelled as an AlertCategory ("kickoff"), not an offset.
  *
  * Props:
- *   eventId      — TheSportsDB event ID string
+ *   eventId      — SportsFixtures event ID string
  *   homeTeam     — home team name
  *   awayTeam     — away team name
  *   league?      — league/competition name

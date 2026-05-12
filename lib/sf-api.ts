@@ -8,6 +8,7 @@ import {
   normalizeVenueImage,
   getBestAssetUrl,
 } from "@/lib/asset-normalization"
+import { cachedProviderJson } from "@/lib/provider-cache"
 
 // Strip /api-docs or trailing slashes if the env var was set to the docs URL
 const rawUrl = process.env.SF_API_URL || "https://staging-api.sportsfixtures.net"
@@ -258,6 +259,7 @@ function extractArray(data: any, ...keys: string[]): any[] {
 
 async function sfFetch(endpoint: string, options: RequestInit = {}) {
   const url = `${SF_API_URL}${endpoint}`
+  const method = (options.method || "GET").toUpperCase()
   const token = getSFToken()
   if (!token) {
     console.error("[SF API] SF_API_TOKEN is not set — request to", endpoint, "will fail with 401. Add the token in Project Settings > Vars.")
@@ -268,7 +270,7 @@ async function sfFetch(endpoint: string, options: RequestInit = {}) {
     ...(options.headers as Record<string, string>),
   }
 
-  try {
+  const fetcher = async () => {
     const res = await fetch(url, {
       ...options,
       headers,
@@ -290,6 +292,36 @@ async function sfFetch(endpoint: string, options: RequestInit = {}) {
     }
 
     return res.json()
+  }
+
+  try {
+    const canCache =
+      method === "GET" &&
+      !endpoint.startsWith("/api/auth/") &&
+      !endpoint.startsWith("/api/users/me")
+
+    if (!canCache) return await fetcher()
+
+    const ttlSeconds =
+      endpoint.includes("/api/events?filters[strStatus][$eq]=live") ? 15 :
+      endpoint.startsWith("/api/events") || endpoint.startsWith("/api/tv-events") ? 60 :
+      endpoint.startsWith("/api/news") || endpoint.startsWith("/api/ads") ? 60 :
+      endpoint.startsWith("/api/venues") ? 300 :
+      900
+    const staleWhileRevalidateSeconds =
+      endpoint.includes("/api/events?filters[strStatus][$eq]=live") ? 120 :
+      endpoint.startsWith("/api/events") || endpoint.startsWith("/api/tv-events") ? 3600 :
+      endpoint.startsWith("/api/news") || endpoint.startsWith("/api/ads") ? 3600 :
+      endpoint.startsWith("/api/venues") ? 86400 :
+      86400
+
+    return await cachedProviderJson({
+      provider: "strapi",
+      endpoint: `${method}:${endpoint}`,
+      ttlSeconds,
+      staleWhileRevalidateSeconds,
+      fetcher,
+    })
   } catch (err) {
     console.error(`[SF API] Network error - ${endpoint}:`, err)
     return null

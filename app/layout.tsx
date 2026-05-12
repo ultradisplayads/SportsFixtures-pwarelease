@@ -1,6 +1,7 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { Geist } from "next/font/google"
+import { Suspense } from "react"
 import { Analytics } from "@vercel/analytics/next"
 import { NotificationProvider } from "@/components/notification-provider"
 import { LocationProvider } from "@/components/location-provider"
@@ -18,6 +19,9 @@ import { FeedbackWidget } from "@/components/feedback-widget"
 import { OpenFullSiteButton } from "@/components/open-full-site-button"
 import { DiscoModeOverlay } from "@/components/disco-mode-overlay"
 import { QuirkPopIn } from "@/components/quirk-pop-in"
+import { BehaviorAnalytics } from "@/components/analytics/behavior-analytics"
+import { PinnedScorePopover } from "@/components/pinned-score-popover"
+import { BuildIdentity } from "@/components/build-identity"
 import "./globals.css"
 
 const geistSans = Geist({ subsets: ["latin"] })
@@ -35,6 +39,12 @@ export const metadata: Metadata = {
     "Live sports fixtures, results, TV schedules, venues, breaking news, and places to watch near you.",
   manifest: "/manifest.webmanifest",
   applicationName: "SportsFixtures",
+  formatDetection: {
+    telephone: false,
+    date: false,
+    address: false,
+    email: false,
+  },
   authors: [{ name: "SportsFixtures", url: CANONICAL_SITE_URL }],
   creator: "SportsFixtures",
   publisher: "SportsFixtures",
@@ -52,7 +62,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "SportsFixtures",
   },
   icons: {
@@ -80,6 +90,14 @@ export const metadata: Metadata = {
     description: "Live sports fixtures, results, TV schedules, venues, breaking news, and places to watch near you.",
     creator: "@sportsfixtures",
     images: ["/og-image.png"],
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-title": "SportsFixtures",
+    "apple-mobile-web-app-status-bar-style": "black-translucent",
+    "msapplication-TileColor": "#5cb827",
+    "msapplication-tap-highlight": "no",
   },
 }
 
@@ -137,7 +155,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${geistSans.className} min-h-dvh bg-background antialiased`}>
+      <body className={`${geistSans.className} min-h-dvh overflow-x-hidden bg-background antialiased`}>
         <ThemeProvider>
           <ComplianceProvider>
           <LocationProvider>
@@ -147,16 +165,23 @@ export default function RootLayout({
                 <OfflineIndicator />
                 <ServiceWorkerRegistration />
                 <UpdatePrompt />
-                <OpenFullSiteButton />
+                <Suspense fallback={null}>
+                  <OpenFullSiteButton />
+                </Suspense>
                 <DiscoModeOverlay />
                 <QuirkPopIn />
+                <PinnedScorePopover />
+                <Suspense fallback={null}>
+                  <BehaviorAnalytics />
+                </Suspense>
                 <AppShellGuard>
-                  <div className="mx-auto min-h-dvh w-full max-w-screen-sm bg-background md:max-w-screen-md">
+                  <div className="mx-auto min-h-dvh w-full max-w-screen-sm overflow-x-clip bg-background md:max-w-screen-md">
                     {children}
                   </div>
                 </AppShellGuard>
                 {showDevPanel ? <AdminPanel /> : null}
                 <FeedbackWidget />
+                <BuildIdentity />
                 <Toaster />
               </NotificationProvider>
             </AuthProvider>

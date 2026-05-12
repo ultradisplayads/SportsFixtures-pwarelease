@@ -9,6 +9,8 @@ import { MatchOverview } from "./match-overview"
 import { MatchLineups } from "./match-lineups"
 import { MatchStats } from "./match-stats"
 import { MatchTimeline } from "./match-timeline"
+import { MatchCommentary } from "./match-commentary"
+import { MatchDatalytics } from "./match-datalytics"
 import { MatchH2H } from "./match-h2h"
 import { MatchVideos } from "./match-videos"
 import { MatchTickets } from "./match-tickets"
@@ -43,10 +45,12 @@ const ALL_TABS: Array<{
   { id: "timeline",   label: "Timeline",   coverageFeature: "timeline" },
   { id: "stats",      label: "Stats",      coverageFeature: "stats" },
   { id: "standings",  label: "Standings",  coverageFeature: "standings" },
+  { id: "h2h",        label: "H2H",        alwaysShow: true, coverageFeature: "h2h" },
+  { id: "datalytics", label: "Datalytics", coverageFeature: "stats" },
+  { id: "commentary", label: "Commentary", coverageFeature: "timeline" },
   { id: "tv",         label: "TV",         coverageFeature: "tv" },
   { id: "highlights", label: "Videos",     coverageFeature: "highlights" },
   { id: "insights",   label: "Insights",   coverageFeature: "insights" },
-  { id: "h2h",        label: "H2H",        alwaysShow: true, coverageFeature: "h2h" },
   { id: "predict",    label: "Predict",    alwaysShow: true },
   { id: "odds",       label: "Odds",       alwaysShow: true, coverageFeature: "odds" },
   { id: "tickets",    label: "Tickets",    alwaysShow: true, coverageFeature: "tickets" },
@@ -97,7 +101,9 @@ export function MatchTabs({ matchId }: MatchTabsProps) {
       switch (tab.id) {
         case "lineups":   return shouldShowTab(data.lineups)
         case "timeline":  return shouldShowTab(data.timeline)
+        case "commentary":return shouldShowTab(data.timeline)
         case "stats":     return shouldShowTab(data.stats)
+        case "datalytics":return shouldShowTab(data.stats)
         case "standings": return shouldShowTab(data.standings)
         case "tv":        return shouldShowTab(data.tv)
         case "highlights":return shouldShowTab(data.highlights)
@@ -193,6 +199,20 @@ export function MatchTabs({ matchId }: MatchTabsProps) {
             isLoading={isLoading}
             homeTeamName={ev?.strHomeTeam}
             awayTeamName={ev?.strAwayTeam}
+          />
+        )}
+
+        {resolvedActive === "datalytics" && (
+          <MatchDatalytics
+            envelope={data?.stats ?? null}
+            isLoading={isLoading}
+          />
+        )}
+
+        {resolvedActive === "commentary" && (
+          <MatchCommentary
+            envelope={data?.timeline ?? null}
+            isLoading={isLoading}
           />
         )}
 

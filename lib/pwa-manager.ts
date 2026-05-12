@@ -54,29 +54,34 @@ class PWAManager {
     this.listeners.forEach((listener) => listener(online))
   }
 
-  // Cache fixtures data in localStorage for offline use
-  public cacheFixtures(data: any[]): void {
+  private getFixturesCacheKey(scope?: string): string {
+    return scope ? `${this.CACHE_KEY}:${scope}` : this.CACHE_KEY
+  }
+
+  // Cache fixtures data in localStorage for offline use and instant reloads
+  public cacheFixtures(data: any[], scope?: string): void {
     try {
       const cached: CachedFixtures = {
         data,
         timestamp: Date.now(),
         expiresAt: Date.now() + this.CACHE_DURATION,
       }
-      localStorage.setItem(this.CACHE_KEY, JSON.stringify(cached))
+      localStorage.setItem(this.getFixturesCacheKey(scope), JSON.stringify(cached))
     } catch {
       // Storage quota exceeded or private browsing — fail silently
     }
   }
 
   // Return cached fixtures if still within expiry window
-  public getCachedFixtures(): any[] | null {
+  public getCachedFixtures(scope?: string): any[] | null {
     try {
-      const cached = localStorage.getItem(this.CACHE_KEY)
+      const cacheKey = this.getFixturesCacheKey(scope)
+      const cached = localStorage.getItem(cacheKey)
       if (!cached) return null
 
       const parsed: CachedFixtures = JSON.parse(cached)
       if (Date.now() > parsed.expiresAt) {
-        localStorage.removeItem(this.CACHE_KEY)
+        localStorage.removeItem(cacheKey)
         return null
       }
 
@@ -88,6 +93,9 @@ class PWAManager {
 
   public clearCache(): void {
     localStorage.removeItem(this.CACHE_KEY)
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith(`${this.CACHE_KEY}:`))
+      .forEach((key) => localStorage.removeItem(key))
   }
 }
 

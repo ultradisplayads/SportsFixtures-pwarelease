@@ -29,11 +29,11 @@ export function useAccountOverview() {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       }
-      if (user?.jwt) headers["Authorization"] = `Bearer ${user.jwt}`
       if (deviceToken) headers["x-device-token"] = deviceToken
 
       const res = await fetch("/api/account/overview", {
         headers,
+        credentials: "include",
         cache: "no-store",
       })
       if (!res.ok) throw new Error("Failed to load account overview")
@@ -54,7 +54,7 @@ export function useAccountOverview() {
     } finally {
       if (!cancelRef.current) setIsLoading(false)
     }
-  }, [user?.jwt, deviceToken])
+  }, [user?.id, deviceToken])
 
   useEffect(() => {
     load()

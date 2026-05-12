@@ -1,6 +1,6 @@
-// Environment variable validation — called once at startup in layout.tsx
+// Environment variable validation. Called once at startup in layout.tsx.
 // Logs warnings for missing vars so devs spot issues early.
-// Does NOT throw — the app should still run in degraded mode.
+// Does not throw; the app should still run in degraded mode.
 
 const REQUIRED_SERVER_VARS = [
   "DATABASE_URL",
@@ -15,14 +15,20 @@ const OPTIONAL_SERVER_VARS = [
   "SF_API_TOKEN",
   "PUSH_SECRET",
   "STATUS_API_TOKEN",
-  // API-Football.com (also api-sports.com) — unlocks fixtures, results, lineups,
-  // standings, stats, predictions, injuries. Without it these data classes fall
-  // back to TheSportsDB where available.
+  "API_SPORTS_ENABLED_PRODUCTS",
+  "API_SPORTS_LIVE_PRODUCT_BUDGET",
+  "API_SPORTS_LIVE_DETAIL_BUDGET",
+  "API_SPORTS_LIVE_TTL_SECONDS",
+] as const
+
+const API_FOOTBALL_KEY_ALIASES = [
   "API_FOOTBALL_KEY",
+  "APISPORTS_KEY",
+  "API_SPORTS_KEY",
 ] as const
 
 export function validateEnv(): void {
-  if (typeof window !== "undefined") return // client-side — skip
+  if (typeof window !== "undefined") return
 
   const missing: string[] = []
   const degraded: string[] = []
@@ -33,6 +39,10 @@ export function validateEnv(): void {
 
   for (const key of OPTIONAL_SERVER_VARS) {
     if (!process.env[key]) degraded.push(key)
+  }
+
+  if (!API_FOOTBALL_KEY_ALIASES.some((key) => process.env[key])) {
+    degraded.push(`one of ${API_FOOTBALL_KEY_ALIASES.join("/")}`)
   }
 
   if (missing.length > 0) {

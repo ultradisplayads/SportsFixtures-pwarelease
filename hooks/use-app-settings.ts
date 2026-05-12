@@ -29,7 +29,7 @@ export function useAppSettings() {
   )
 
   const set = useCallback(
-    (key: keyof AppSettings, value: boolean) => {
+    <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
       triggerHaptic("light")
       setSettings((_prev) => saveAppSettings({ [key]: value }))
     },

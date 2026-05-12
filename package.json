@@ -1,10 +1,16 @@
 {
-  "name": "my-v0-project",
+  "name": "sportsfixtures-pwa-release",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack -p 3010",
+    "dev:pwa": "next dev --webpack -p 3010",
+    "dev:ios": "next dev --webpack -p 3030",
+    "dev:android": "next dev --webpack -p 3033",
     "build": "next build",
+    "proof:auth": "node scripts/auth-role-matrix.js",
+    "proof:performance": "node scripts/local-performance-smoke.js",
+    "proof:strapi-webhook": "node scripts/test-strapi-revalidate-webhook.js",
     "start": "next start",
     "lint": "eslint ."
   },

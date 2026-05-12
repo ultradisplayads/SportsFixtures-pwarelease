@@ -19,12 +19,16 @@ export function TickerScoreDisplay({ item }: TickerScoreDisplayProps) {
   const minuteStr = item.minute != null ? String(item.minute) : null
   const minute = formatTickerMinute(minuteStr, item.type)
   const badgeClass = tickerMinuteBadgeClass(minuteStr, item.type)
+  const isLive = item.type === "live_score" || item.type === "match_event"
 
   return (
     <span
-      className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase shrink-0 ${badgeClass}`}
+      className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${badgeClass}`}
       aria-label={minute}
     >
+      {isLive && (
+        <span className="h-1.5 w-1.5 rounded-full bg-live shadow-[0_0_6px_rgba(34,197,94,0.75)]" aria-hidden="true" />
+      )}
       {minute}
     </span>
   )

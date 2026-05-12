@@ -50,6 +50,12 @@ const ADMIN_SECTIONS = [
     description: "Geo-ad slots, sponsor slots, and commercial content config",
   },
   {
+    href: "/admin/campaigns",
+    icon: Tag,
+    title: "Campaign Builder",
+    description: "Create offers, target fans by team and distance, preview, test, schedule, and review results",
+  },
+  {
     href: "/admin/control-plane#venue-boosts",
     icon: MapPin,
     title: "Venue Boosts",
@@ -64,8 +70,8 @@ const ADMIN_SECTIONS = [
   {
     href: "/admin/xibo",
     icon: Monitor,
-    title: "Xibo Signage",
-    description: "Push fixture content to venue screens — trigger manual pushes and monitor sync status",
+    title: "Display Advertising / UDA",
+    description: "Push fixture content to venue displays — trigger manual pushes and monitor sync status",
   },
 ]
 

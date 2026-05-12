@@ -10,14 +10,75 @@ import { triggerHaptic } from "@/lib/haptic-feedback"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { HomeModuleEditor } from "@/components/personalized-home"
 import { TimezoneSelector } from "@/components/timezone-selector"
+import { useFixturesFilter } from "@/lib/fixtures-filter-context"
+
+type DirectoryItem = {
+  id: string
+  label: string
+  slug: string
+}
+
+function ChipGroup({
+  title,
+  items,
+  active,
+  loading,
+  onSelect,
+}: {
+  title: string
+  items: DirectoryItem[]
+  active?: string | null
+  loading?: boolean
+  onSelect?: (item: DirectoryItem) => void
+}) {
+  return (
+    <div>
+      <h3 className="mb-3 font-semibold">{title}</h3>
+      <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto pr-1">
+        {loading ? (
+          <Button variant="outline" size="sm" disabled>Loading...</Button>
+        ) : items.length > 0 ? (
+          items.map((item) => {
+            const isActive = active === item.slug || active === item.id
+            return (
+              <Button
+                key={`${title}-${item.id}`}
+                type="button"
+                variant={isActive ? "default" : "outline"}
+                size="sm"
+                className="max-w-full truncate"
+                title={item.label}
+                onClick={() => onSelect?.(item)}
+              >
+                {item.label}
+              </Button>
+            )
+          })
+        ) : (
+          <Button variant="outline" size="sm" disabled>No {title.toLowerCase()} found</Button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export function FilterButton() {
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
+  const [sports, setSports] = useState<DirectoryItem[]>([])
+  const [countries, setCountries] = useState<DirectoryItem[]>([])
+  const [leagues, setLeagues] = useState<DirectoryItem[]>([])
+  const [competitions, setCompetitions] = useState<DirectoryItem[]>([])
+  const [isDirectoryLoading, setIsDirectoryLoading] = useState(true)
+  const [selectedDate, setSelectedDate] = useState("today")
+  const { selectedSport, selectedCountry, pinnedLeagueId, setSport, setCountry, setPinnedLeague } = useFixturesFilter()
   const buttonRef = useRef<HTMLDivElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const dragStartPos = useRef({ x: 0, y: 0 })
+
+  const selectedSportId = sports.find((item) => item.slug === selectedSport || item.id === selectedSport)?.id
+  const selectedCountryName = countries.find((item) => item.slug === selectedCountry || item.id === selectedCountry)?.label
 
   useEffect(() => {
     const initPosition = () => {
@@ -38,6 +99,75 @@ export function FilterButton() {
     window.addEventListener("resize", onResize)
     return () => window.removeEventListener("resize", onResize)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadDirectory() {
+      setIsDirectoryLoading(true)
+      try {
+        const [sportsRes, countriesRes] = await Promise.all([
+          fetch("/api/sports"),
+          fetch("/api/countries"),
+        ])
+        const [sportsJson, countriesJson] = await Promise.all([
+          sportsRes.json(),
+          countriesRes.json(),
+        ])
+
+        if (!cancelled) {
+          setSports(Array.isArray(sportsJson.sports) ? sportsJson.sports : [])
+          setCountries(Array.isArray(countriesJson.countries) ? countriesJson.countries : [])
+        }
+      } catch (error) {
+        console.error("[FilterButton] Failed to load directory", error)
+      } finally {
+        if (!cancelled) setIsDirectoryLoading(false)
+      }
+    }
+
+    loadDirectory()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const query = new URLSearchParams()
+    if (selectedSportId) query.set("sportId", selectedSportId)
+    if (selectedCountryName) query.set("country", selectedCountryName)
+
+    async function loadCompetitions() {
+      try {
+        const suffix = query.toString() ? `?${query}` : ""
+        const [leaguesRes, competitionsRes] = await Promise.all([
+          fetch(`/api/leagues${suffix}`),
+          fetch(`/api/competitions${suffix}`),
+        ])
+        const [leaguesJson, competitionsJson] = await Promise.all([
+          leaguesRes.json(),
+          competitionsRes.json(),
+        ])
+
+        if (!cancelled) {
+          setLeagues(Array.isArray(leaguesJson.leagues) ? leaguesJson.leagues : [])
+          setCompetitions(Array.isArray(competitionsJson.competitions) ? competitionsJson.competitions : [])
+        }
+      } catch (error) {
+        console.error("[FilterButton] Failed to load competitions", error)
+        if (!cancelled) {
+          setLeagues([])
+          setCompetitions([])
+        }
+      }
+    }
+
+    loadCompetitions()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedSportId, selectedCountryName])
 
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0]
@@ -144,10 +274,8 @@ export function FilterButton() {
         <SheetTrigger asChild>
           <div
             ref={buttonRef}
-            className={`fixed z-10 touch-none ${showDelete ? "animate-wiggle" : ""}`}
+            className={`fixed bottom-24 right-4 z-40 touch-none ${showDelete ? "animate-wiggle" : ""}`}
             style={{
-              left: `${position.x}px`,
-              top: `${position.y}px`,
               cursor: isDragging ? "grabbing" : "grab",
             }}
             onTouchStart={handleTouchStart}
@@ -156,7 +284,7 @@ export function FilterButton() {
             onMouseDown={handleMouseDown}
           >
             <button
-              className="flex items-center gap-2 rounded-full border border-border bg-card px-6 py-3 shadow-lg hover:bg-accent active:scale-95 transition-transform"
+              className="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-lg transition-transform hover:bg-accent active:scale-95 sm:w-auto sm:px-4"
               onClick={(e) => {
                 if (isDragging) {
                   e.preventDefault()
@@ -165,9 +293,10 @@ export function FilterButton() {
                   triggerHaptic("light")
                 }
               }}
+              aria-label="Filter and sort"
             >
               <SlidersHorizontal className="h-4 w-4" />
-              <span className="font-medium">Filter & Sort</span>
+              <span className="hidden text-sm font-medium sm:inline">Filter</span>
             </button>
           </div>
         </SheetTrigger>
@@ -176,38 +305,54 @@ export function FilterButton() {
             <SheetTitle>Filter & Sort</SheetTitle>
           </SheetHeader>
           <div className="mt-4 space-y-6 overflow-y-auto pb-8">
-            <div>
-              <h3 className="mb-3 font-semibold">Sport</h3>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm">Football</Button>
-                <Button variant="outline" size="sm">Basketball</Button>
-                <Button variant="outline" size="sm">Tennis</Button>
-              </div>
-            </div>
-            <div>
-              <h3 className="mb-3 font-semibold">Country</h3>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm">UK</Button>
-                <Button variant="outline" size="sm">Spain</Button>
-                <Button variant="outline" size="sm">Italy</Button>
-              </div>
-            </div>
-            <div>
-              <h3 className="mb-3 font-semibold">League</h3>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm">Premier League</Button>
-                <Button variant="outline" size="sm">Champions League</Button>
-                <Button variant="outline" size="sm">La Liga</Button>
-              </div>
-            </div>
-            <div>
-              <h3 className="mb-3 font-semibold">Date</h3>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm">Today</Button>
-                <Button variant="outline" size="sm">Tomorrow</Button>
-                <Button variant="outline" size="sm">This Week</Button>
-              </div>
-            </div>
+            <ChipGroup
+              title="Sport"
+              items={sports}
+              active={selectedSport}
+              loading={isDirectoryLoading}
+              onSelect={(item) => {
+                triggerHaptic("selection")
+                setSport(item.slug || item.id)
+              }}
+            />
+            <ChipGroup
+              title="Country"
+              items={countries}
+              active={selectedCountry}
+              loading={isDirectoryLoading}
+              onSelect={(item) => {
+                triggerHaptic("selection")
+                setCountry(item.slug || item.id)
+              }}
+            />
+            <ChipGroup
+              title="League"
+              items={leagues}
+              active={pinnedLeagueId}
+              onSelect={(item) => {
+                triggerHaptic("selection")
+                setPinnedLeague(pinnedLeagueId === item.id ? null : item.id)
+              }}
+            />
+            <ChipGroup
+              title="Competitions"
+              items={competitions}
+              active={pinnedLeagueId}
+              onSelect={(item) => {
+                triggerHaptic("selection")
+                setPinnedLeague(pinnedLeagueId === item.id ? null : item.id)
+              }}
+            />
+            <ChipGroup
+              title="Date"
+              items={[
+                { id: "today", label: "Today", slug: "today" },
+                { id: "tomorrow", label: "Tomorrow", slug: "tomorrow" },
+                { id: "week", label: "This Week", slug: "week" },
+              ]}
+              active={selectedDate}
+              onSelect={(item) => setSelectedDate(item.slug)}
+            />
 
             {/* ── Timezone ──────────────────────────── */}
             <div className="border-t border-border pt-4">

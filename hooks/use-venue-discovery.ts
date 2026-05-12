@@ -25,6 +25,7 @@ export function useVenueDiscovery(params: VenueDiscoveryParams) {
     maxDistanceKm: undefined,
     facilityKeys: [],
     offersOnly: false,
+    foodOnly: false,
     followedOnly: false,
     venueTypes: [],
     foodOptions: [],

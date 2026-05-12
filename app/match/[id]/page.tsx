@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { headers } from "next/headers"
 import { HeaderMenu } from "@/components/header-menu"
 import { BottomNav } from "@/components/bottom-nav"
 import { MatchHeader } from "@/components/match-detail/match-header"
@@ -57,7 +58,13 @@ type MatchApiResponse = {
 }
 
 async function getMatch(id: string): Promise<MatchApiResponse | null> {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://sportsfixtures.net"
+  const requestHeaders = await headers()
+  const host = requestHeaders.get("host")
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host?.startsWith("localhost") ? "http" : "https")
+  const siteUrl =
+    host
+      ? `${protocol}://${host}`
+      : process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://sportsfixtures.net"
   try {
     const res = await fetch(`${siteUrl}/api/match/${id}`, {
       next: { revalidate: 300 },

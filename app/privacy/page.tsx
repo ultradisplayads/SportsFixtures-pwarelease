@@ -24,7 +24,7 @@ export default function PrivacyPage() {
             </section>
             <section>
               <h2 className="mb-2 text-base font-semibold text-foreground">Analytics</h2>
-              <p>We may collect app usage and performance data to improve reliability, usability, and feature quality.</p>
+              <p>We may collect app usage and performance data to improve reliability, usability, and feature quality. This can include pages viewed, time spent on pages, in-app search terms, filter choices, navigation clicks, and venue check-ins.</p>
             </section>
             <section>
               <h2 className="mb-2 text-base font-semibold text-foreground">Contact</h2>

@@ -119,11 +119,24 @@ function loadCachedUser(): AuthUser | null {
 
 export function getRoleRedirect(roleType?: string): string {
   switch (roleType) {
-    case "venue_owner": return "/venue-owners"
+    case "venue_owner": return "/profile"
     case "admin":
     case "internal": return "/admin"
     default: return "/"
   }
+}
+
+function getPublicApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_SF_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || ""
+  const base = configured.trim().replace(/\/api-docs\/?$/, "").replace(/\/$/, "")
+
+  if (base) return base
+
+  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+    return "https://staging-api.sportsfixtures.net"
+  }
+
+  throw new Error("NEXT_PUBLIC_SF_API_URL must be configured before social sign-in can start.")
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -154,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!data.authenticated) {
           clearSession()
           setState({ user: null, loading: false, error: null })
-          window.location.href = "/sign-in?reason=session_expired"
+          window.location.href = "/auth/signin?reason=session_expired"
         }
       } catch {
         // Network error — keep session alive, cookie still valid
@@ -283,22 +296,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [deviceToken, setUser])
 
-// ✅ Replace signInWithGoogle
-const signInWithGoogle = useCallback(async (): Promise<boolean> => {
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
-  window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/oauth/init?provider=google&origin=${encodeURIComponent(origin)}`
-  return true
-}, [])
-
-// ✅ Replace signInWithFacebook
-const signInWithFacebook = useCallback(async (): Promise<boolean> => {
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
-  window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/oauth/init?provider=facebook&origin=${encodeURIComponent(origin)}`
-  return true
-}, [])
+  const signInWithGoogle = useCallback(async (): Promise<boolean> => {
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+    window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/oauth/init?provider=google&origin=${encodeURIComponent(origin)}`
+    return true
+  }, [])
+  
+  // ✅ Replace signInWithFacebook
+  const signInWithFacebook = useCallback(async (): Promise<boolean> => {
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+    window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/oauth/init?provider=facebook&origin=${encodeURIComponent(origin)}`
+    return true
+  }, [])
 
   const signInWithApple = useCallback(async (): Promise<boolean> => {
-    window.location.href = `${process.env.NEXT_PUBLIC_SF_API_URL}/api/connect/apple`
+    try {
+      window.location.href = `${getPublicApiBase()}/api/connect/apple`
+    } catch (error: any) {
+      setState((s) => ({ ...s, loading: false, error: error.message || "Apple sign-in is not configured" }))
+      return false
+    }
     return true
   }, [])
 
@@ -316,7 +333,7 @@ const signInWithFacebook = useCallback(async (): Promise<boolean> => {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === USER_KEY && e.newValue === null) {
         setState({ user: null, loading: false, error: null })
-        window.location.href = "/sign-in"
+        window.location.href = "/auth/signin"
       }
       if (e.key === USER_KEY && e.newValue) {
         try { setState({ user: JSON.parse(e.newValue), loading: false, error: null }) } catch {}

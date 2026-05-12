@@ -1,15 +1,22 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { requireAdminSession } from "@/lib/server/admin-auth"
 
 const STRAPI = () =>
   (process.env.SF_API_URL || "http://localhost:1337")
     .replace(/\/api-docs\/?$/, "")
     .replace(/\/$/, "")
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const session = await requireAdminSession(req)
+  if (!session.ok) return session.response
+
   try {
     const res = await fetch(
       `${STRAPI()}/api/watch-venues?pagination[pageSize]=200&sort=name:asc`,
-      { cache: "no-store" }
+      {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${session.jwt}` },
+      }
     )
 
     if (!res.ok) throw new Error(`Strapi error: ${res.status}`)

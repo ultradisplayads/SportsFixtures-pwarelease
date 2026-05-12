@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next"
 const SITE_URL = "https://sportsfixtures.net"
 
 async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { next: { revalidate: 3600 } })
+  const res = await fetch(url, { next: { revalidate: 300, tags: ["sitemap", "seo", "strapi"] } })
   if (!res.ok) throw new Error(`Failed ${url}`)
   return res.json()
 }
@@ -30,6 +30,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/news`,     changeFrequency: "hourly",   priority: 0.9 },
     { url: `${SITE_URL}/tv`,       changeFrequency: "hourly",   priority: 0.85 },
     { url: `${SITE_URL}/venues`,   changeFrequency: "daily",    priority: 0.85 },
+    { url: `${SITE_URL}/gfp`,      changeFrequency: "weekly",   priority: 0.7 },
+    { url: `${SITE_URL}/sportsbarz`, changeFrequency: "weekly", priority: 0.7 },
+    { url: `${SITE_URL}/local-leagues/pool`, changeFrequency: "daily", priority: 0.72 },
+    { url: `${SITE_URL}/local-leagues/darts`, changeFrequency: "daily", priority: 0.72 },
+    { url: `${SITE_URL}/local-leagues/pricing`, changeFrequency: "weekly", priority: 0.65 },
+    { url: `${SITE_URL}/ai.txt`,   changeFrequency: "daily",    priority: 0.6 },
   ]
 
   const [teams, leagues, venues, articles, matches] = await Promise.allSettled([

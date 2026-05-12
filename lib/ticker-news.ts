@@ -5,6 +5,7 @@
 // The ticker feed route calls these instead of inlining logic.
 
 import type { TickerItem } from "@/types/ticker"
+import { buildNewsExitHref } from "@/lib/news-exit"
 
 // Raw article shape from /api/news or TheSportsDB news endpoint
 export interface RawNewsArticle {
@@ -42,7 +43,12 @@ export function buildBreakingNewsItem(raw: RawNewsArticle): TickerItem | null {
   if (!title?.trim()) return null
 
   const id = String(raw.id ?? Math.random().toString(36).slice(2))
-  const href = raw.url ?? raw.strUrl ?? "/news"
+  const href = buildNewsExitHref({
+    id,
+    title,
+    url: raw.url ?? raw.strUrl,
+    source: raw.source ?? raw.strSource,
+  })
 
   return {
     id: `news_${id}`,

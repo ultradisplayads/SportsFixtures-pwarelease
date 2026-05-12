@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { MapPin, Loader2 } from "lucide-react"
 import { triggerHaptic } from "@/lib/haptic-feedback"
+import { analytics } from "@/lib/analytics"
 
 interface CheckinButtonProps {
   venueId: string
@@ -35,6 +36,7 @@ export function CheckinButton({ venueId, eventId, active = false, onToggle }: Ch
         const next = !checkedIn
         setCheckedIn(next)
         onToggle?.(next)
+        analytics.venueCheckIn(venueId, eventId, next)
         triggerHaptic("medium")
       }
     } catch {

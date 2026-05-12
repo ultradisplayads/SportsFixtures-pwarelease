@@ -5,6 +5,10 @@ export type VenueDiscoveryReason =
   | "showing_this_competition"
   | "you_follow_this_venue"
   | "has_live_offer"
+  | "open_now"
+  | "screens_available"
+  | "match_time_fit"
+  | "crowd_interest"
   | "editorial_boost"
   | "sponsored"
 
@@ -57,12 +61,20 @@ export type VenueCard = {
   // Facilities & sports
   facilities?: string[]
   sports?: string[]
+  teams?: string[]
+  competitions?: string[]
+  events?: string[]
   offers?: VenueOffer[]
   offerCount?: number
   showingNow?: boolean
   showingEventIds?: string[]
   reasons?: VenueDiscoveryReason[]
   sponsored?: boolean
+  openNow?: boolean
+  checkedInCount?: number
+  watchingHereCount?: number
+  crowdScore?: number
+  crowdLabel?: "Quiet" | "Getting busy" | "Busy" | "Packed"
   /** Geo-targeted PPC: how far from user this sponsored listing shows (km) */
   ppcRadiusKm?: number
   /** PPC bid tier — used for ordering sponsored results; higher = shown first */

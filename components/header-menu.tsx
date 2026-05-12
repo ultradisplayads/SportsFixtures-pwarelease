@@ -16,6 +16,8 @@ import { isLaunchPassActive, LAUNCH_PASS_EXPIRY } from "@/lib/subscription-manag
 import { useNotifications } from "@/hooks/use-notifications"
 import { useAuth } from "@/lib/auth-context"
 
+const FULL_SITE_URL = process.env.NEXT_PUBLIC_FULL_SITE_URL || "https://sportsfixtures.net"
+
 interface MenuItem {
   id: string
   label: string
@@ -29,16 +31,29 @@ const DEFAULT_MENU_ITEMS: MenuItem[] = [
   { id: "live",     label: "Live Scores",    href: "/live",     section: "Quick Links" },
   { id: "fixtures", label: "Fixtures",       href: "/fixtures", section: "Quick Links" },
   { id: "results",  label: "Results",        href: "/results",  section: "Quick Links" },
+  { id: "browse",   label: "Browse Sports, Countries & Competitions", href: "/browse", section: "Quick Links" },
+  { id: "search",   label: "Search Teams, Players & Venues", href: "/search", section: "Quick Links" },
+  { id: "standings", label: "Tables & Standings", href: "/standings", section: "Quick Links" },
+  { id: "calendar", label: "Calendar",       href: "/calendar", section: "Quick Links" },
   { id: "tv",       label: "TV Guide",       href: "/tv",       section: "Quick Links" },
   { id: "news",     label: "News",           href: "/news",     section: "Quick Links" },
+  { id: "social",   label: "Stats, Predictions & Leaderboard", href: "/social", section: "Quick Links" },
+  { id: "redeem",   label: "Redeem Code",    href: "/premium#redeem-code", section: "Quick Links" },
+  { id: "full-site", label: "Open Full Website", href: FULL_SITE_URL, section: "Quick Links" },
   // Watch Live
   { id: "venues",       label: "Find Sports Bars Near Me", href: "/venues",              section: "Watch Live" },
-  { id: "sportsbarz",   label: "SportsBarz.co",            href: "https://sportsbarz.co", section: "Watch Live" },
-  { id: "gfp",          label: "GreatFoodPlaces.com",      href: "https://greatfoodplaces.com", section: "Watch Live" },
+  { id: "sportsbarz",   label: "SportsBarz.co",            href: "/sportsbarz", section: "Watch Live" },
+  { id: "gfp",          label: "GreatFoodPlaces.com",      href: "/gfp", section: "Watch Live" },
   { id: "venue-signup", label: "Venue Owner Sign Up",      href: "/venues/owner-signup", section: "Watch Live" },
   // Local Leagues
   { id: "pool",  label: "Pool Leagues & Tables",  href: "/local-leagues/pool",  section: "Local Leagues" },
   { id: "darts", label: "Darts Leagues & Tables", href: "/local-leagues/darts", section: "Local Leagues" },
+  // Support
+  { id: "about", label: "About SportsFixtures", href: "/about-us", section: "Support" },
+  { id: "contact", label: "Contact", href: "/contact", section: "Support" },
+  { id: "cookie-policy", label: "Cookie Policy", href: "/cookie-policy", section: "Support" },
+  { id: "privacy", label: "Privacy Policy", href: "/privacy", section: "Support" },
+  { id: "terms", label: "Terms", href: "/terms", section: "Support" },
 ]
 
 export function HeaderMenu() {
@@ -110,7 +125,12 @@ export function HeaderMenu() {
     const saved = localStorage.getItem("menu-order")
     if (saved) {
       try {
-        setMenuItems(JSON.parse(saved))
+        const parsed = JSON.parse(saved) as MenuItem[]
+        const parsedIds = new Set(parsed.map((item) => item.id))
+        const missingDefaults = DEFAULT_MENU_ITEMS.filter((item) => !parsedIds.has(item.id))
+        const merged = [...parsed, ...missingDefaults]
+        setMenuItems(merged)
+        if (missingDefaults.length > 0) saveMenuOrder(merged)
       } catch (e) {
         console.error("[HeaderMenu] Failed to load menu order:", e)
       }
@@ -180,7 +200,7 @@ export function HeaderMenu() {
       <Link
         href="/venues"
         onClick={handleLinkClick}
-        className="flex items-center gap-1.5 rounded-full bg-[#22c55e] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90 active:opacity-80"
+        className="animate-[sf-watch-pulse_2.2s_ease-in-out_infinite] flex items-center gap-1.5 rounded-full bg-[#22c55e] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90 active:opacity-80 motion-reduce:animate-none"
       >
         <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span>Places to Watch</span>
@@ -410,11 +430,27 @@ export function HeaderMenu() {
         <Sheet>
           <SheetTrigger asChild>
             <button
-              className="rounded-lg p-2 hover:bg-accent transition-colors"
-              aria-label="User account"
+              className={`relative rounded-lg p-2 transition-colors hover:bg-accent ${
+                isAuthenticated
+                  ? "text-green-400 ring-1 ring-green-500/45"
+                  : "animate-pulse text-red-400 ring-1 ring-red-500/60"
+              }`}
+              aria-label={isAuthenticated ? "User account signed in" : "User account not signed in"}
               onClick={() => triggerHaptic("light")}
             >
               <User className="h-5 w-5" />
+              <span
+                className={`absolute right-1 top-1 h-2 w-2 rounded-full ${
+                  isAuthenticated ? "bg-green-400" : "animate-ping bg-red-500"
+                }`}
+                aria-hidden="true"
+              />
+              <span
+                className={`absolute right-1 top-1 h-2 w-2 rounded-full ${
+                  isAuthenticated ? "bg-green-400" : "bg-red-500"
+                }`}
+                aria-hidden="true"
+              />
             </button>
           </SheetTrigger>
           <SheetContent side="right" className="w-[85vw] max-w-sm overflow-y-auto">

@@ -25,6 +25,12 @@ export interface Subscription {
   active: boolean
   /** null = never expires (Bronze), set for Silver/Gold when billing is live */
   expiresAt?: Date
+  /** How the current tier was activated. */
+  source?: "launch_pass" | "purchase" | "redeem_code" | "manual"
+  /** Last successful redeem code, stored only locally for UX/audit display. */
+  redeemedCode?: string
+  /** Optional discount attached to account for future checkout. */
+  discountPercent?: number
   /** true when user is on Bronze but has a Gold Launch Pass active */
   launchPassActive: boolean
   features: SubscriptionFeatures
@@ -158,8 +164,39 @@ class SubscriptionManager {
       tier,
       active: true,
       expiresAt,
+      source: "purchase",
       launchPassActive: isLaunchPassActive(),
       features: TIER_FEATURES[tier],
+    }
+    this.saveSubscription()
+  }
+
+  redeem(args: {
+    tier: SubscriptionTier
+    code: string
+    expiresAt?: string | Date | null
+    discountPercent?: number
+  }) {
+    const isLifetime = args.tier === "founder_vip"
+    const expiresAt = isLifetime
+      ? undefined
+      : args.expiresAt
+      ? new Date(args.expiresAt)
+      : (() => {
+          const date = new Date()
+          date.setFullYear(date.getFullYear() + 1)
+          return date
+        })()
+
+    this.subscription = {
+      tier: args.tier,
+      active: true,
+      expiresAt,
+      source: "redeem_code",
+      redeemedCode: args.code,
+      discountPercent: args.discountPercent,
+      launchPassActive: isLaunchPassActive(),
+      features: TIER_FEATURES[args.tier],
     }
     this.saveSubscription()
   }
@@ -168,6 +205,7 @@ class SubscriptionManager {
     this.subscription = {
       tier: "bronze",
       active: true,
+      source: "manual",
       launchPassActive: isLaunchPassActive(),
       features: TIER_FEATURES.bronze,
     }

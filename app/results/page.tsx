@@ -7,9 +7,11 @@ import { BottomNav } from "@/components/bottom-nav"
 import { FilterButton } from "@/components/filter-button"
 import { HeaderMenu } from "@/components/header-menu"
 import { ResultsList } from "@/components/results-list"
+import { FixturesFilterProvider } from "@/lib/fixtures-filter-context"
 
 export default function ResultsPage() {
   return (
+    <FixturesFilterProvider>
     <div className="flex min-h-screen flex-col bg-background pb-20">
       {/* Live Ticker */}
       <LiveTicker />
@@ -36,5 +38,6 @@ export default function ResultsPage() {
       {/* Bottom Navigation */}
       <BottomNav />
     </div>
+    </FixturesFilterProvider>
   )
 }

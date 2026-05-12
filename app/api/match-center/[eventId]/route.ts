@@ -23,6 +23,8 @@ import {
   deriveInsightsFromContext,
 } from "@/lib/match-intelligence"
 import { getLeagueTable } from "@/app/actions/sports-api"
+import { getEventDetails } from "@/app/actions/sports-api"
+import { getTVEventsForEvent, getTVEventsByDateRange } from "@/lib/sf-api"
 import {
   buildMatchCenterCoverageHints,
   deriveSportKey,
@@ -106,8 +108,20 @@ function buildTeamLineup(teamData: any, name: string, badge: string): MatchLineu
 
 // ── TV normaliser ─────────────────────────────────────────────────────────────
 
-function normaliseTvChannels(raw: any): MatchTvInfo | null {
+function normaliseTvChannels(raw: any, tvEvents: any[] = []): MatchTvInfo | null {
   const channels: MatchTvInfo["channels"] = []
+
+  for (const ch of tvEvents) {
+    const name = ch.channel || ch.strChannel || ch.strTVStation || ch.name || ""
+    if (name) {
+      channels.push({
+        id: ch.id ? String(ch.id) : undefined,
+        name,
+        country: ch.country || ch.strCountry || ch.countryCode || undefined,
+        logo: ch.channelLogo || ch.strChannelLogo || ch.logo || undefined,
+      })
+    }
+  }
 
   // SF API event may include channels array
   if (Array.isArray(raw?.channels)) {
@@ -124,9 +138,49 @@ function normaliseTvChannels(raw: any): MatchTvInfo | null {
   if (raw?.strChannel && !channels.find((c) => c.name === raw.strChannel)) {
     channels.push({ name: raw.strChannel })
   }
+  if (Array.isArray(raw?.tvEvents)) {
+    for (const ch of raw.tvEvents) {
+      const name = ch.channel || ch.strChannel || ch.strTVStation || ""
+      if (name && !channels.find((c) => c.name === name)) {
+        channels.push({
+          id: ch.id ? String(ch.id) : undefined,
+          name,
+          country: ch.country || ch.strCountry || ch.countryCode || undefined,
+          logo: ch.channelLogo || ch.strChannelLogo || undefined,
+        })
+      }
+    }
+  }
 
   if (channels.length === 0) return null
-  return { channels, source: "thesportsdb" }
+  return { channels, source: "sf_api" }
+}
+
+function tvEventMatches(item: any, ev: MatchCenterEvent | null | undefined, eventId: string): boolean {
+  if (!ev) return false
+  const relatedEvent = item.event && typeof item.event === "object" ? item.event : null
+  const ids = [
+    item.eventId,
+    item.idEvent,
+    item.event_id,
+    relatedEvent?.id,
+    relatedEvent?.idEvent,
+  ].filter(Boolean).map(String)
+  if (ids.includes(eventId) || ids.includes(ev.idEvent)) return true
+
+  const home = ev.strHomeTeam.toLowerCase()
+  const away = ev.strAwayTeam.toLowerCase()
+  const haystack = [
+    item.strEvent,
+    item.eventName,
+    item.title,
+    relatedEvent?.strEvent,
+    relatedEvent?.name,
+    relatedEvent?.strHomeTeam,
+    relatedEvent?.strAwayTeam,
+  ].filter(Boolean).join(" ").toLowerCase()
+
+  return Boolean(haystack && haystack.includes(home) && haystack.includes(away))
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -151,32 +205,36 @@ export async function GET(
     sfGet(`/api/highlights?limit=6`),
   ])
 
-  const sfEvent: any = eventPayload?.data || eventPayload || null
+  let sfEvent: any = eventPayload?.data || eventPayload || null
+  if (!sfEvent || (!sfEvent.strHomeTeam && !sfEvent.homeTeam)) {
+    const fallbackEvent = await getEventDetails(eventId)
+    if (fallbackEvent) sfEvent = fallbackEvent
+  }
   const lineupData: any = lineupPayload?.success ? lineupPayload.data : null
 
   // ── 2. Build event envelope ───────────────────────────────────────────────
 
-  let eventEnvelope = makeUnavailable<MatchCenterEvent>("Event details", "thesportsdb")
+  let eventEnvelope = makeUnavailable<MatchCenterEvent>("Event details", "sf_api")
 
   if (sfEvent && (sfEvent.strHomeTeam || sfEvent.homeTeam)) {
     const ev: MatchCenterEvent = {
-      idEvent: String(sfEvent.idEvent || eventId),
+      idEvent: String(sfEvent.idEvent || sfEvent.id || eventId),
       strEvent: sfEvent.strEvent || `${sfEvent.strHomeTeam} vs ${sfEvent.strAwayTeam}`,
-      strSport: sfEvent.strSport || "Soccer",
-      strLeague: sfEvent.league?.name || sfEvent.strLeague || "",
-      idLeague: String(sfEvent.league?.id || sfEvent.idLeague || ""),
+      strSport: sfEvent.sport?.strSport || sfEvent.sport?.name || sfEvent.strSport || "Soccer",
+      strLeague: sfEvent.league?.name || sfEvent.league?.strLeague || sfEvent.strLeague || "",
+      idLeague: String(sfEvent.league?.id || sfEvent.league?.idLeague || sfEvent.idLeague || ""),
       strSeason: sfEvent.strSeason || undefined,
       strHomeTeam: sfEvent.homeTeam?.name || sfEvent.strHomeTeam || "",
       strAwayTeam: sfEvent.awayTeam?.name || sfEvent.strAwayTeam || "",
-      strHomeTeamBadge: sfEvent.homeTeam?.badge || sfEvent.strHomeTeamBadge || undefined,
-      strAwayTeamBadge: sfEvent.awayTeam?.badge || sfEvent.strAwayTeamBadge || undefined,
+      strHomeTeamBadge: sfEvent.homeTeam?.badge || sfEvent.homeBadge || sfEvent.strHomeTeamBadge || undefined,
+      strAwayTeamBadge: sfEvent.awayTeam?.badge || sfEvent.awayBadge || sfEvent.strAwayTeamBadge || undefined,
       idHomeTeam: String(sfEvent.homeTeam?.id || sfEvent.idHomeTeam || ""),
       idAwayTeam: String(sfEvent.awayTeam?.id || sfEvent.idAwayTeam || ""),
       intHomeScore: sfEvent.intHomeScore != null ? Number(sfEvent.intHomeScore) : null,
       intAwayScore: sfEvent.intAwayScore != null ? Number(sfEvent.intAwayScore) : null,
       strStatus: sfEvent.strStatus || undefined,
       strProgress: sfEvent.strProgress || undefined,
-      strVenue: sfEvent.strVenue || undefined,
+      strVenue: sfEvent.strVenue || sfEvent.venue?.name || undefined,
       dateEvent: sfEvent.dateEvent || undefined,
       strTime: sfEvent.strTime || undefined,
       strVideo: sfEvent.strVideo || undefined,
@@ -184,7 +242,7 @@ export async function GET(
     const isLiveStatus = ["1h", "2h", "ht", "live", "et", "pen"].some((s) =>
       (ev.strProgress || ev.strStatus || "").toLowerCase().includes(s)
     )
-    eventEnvelope = makeEnvelope(ev, "thesportsdb", {
+    eventEnvelope = makeEnvelope(ev, "sf_api", {
       fetchedAt,
       isLive: isLiveStatus,
       maxAgeSeconds: isLiveStatus ? 30 : 3600,
@@ -196,7 +254,7 @@ export async function GET(
 
   // ── 3. Lineups envelope ───────────────────────────────────────────────────
 
-  let lineupsEnvelope = makeUnavailable<MatchLineups>("Lineups", "thesportsdb")
+  let lineupsEnvelope = makeUnavailable<MatchLineups>("Lineups", "sf_api")
 
   if (lineupData) {
     const homeName = ev?.strHomeTeam || lineupData.homeTeam?.name || "Home"
@@ -212,10 +270,10 @@ export async function GET(
       home: buildTeamLineup(lineupData.homeTeam, homeName, homeBadge),
       away: buildTeamLineup(lineupData.awayTeam, awayName, awayBadge),
       confirmed,
-      source: "thesportsdb",
+      source: "sf_api",
     }
 
-    lineupsEnvelope = makeEnvelope(lineup, "thesportsdb", {
+    lineupsEnvelope = makeEnvelope(lineup, "sf_api", {
       fetchedAt,
       partial: !confirmed,
       confidence: confirmed ? "high" : "low",
@@ -225,13 +283,13 @@ export async function GET(
 
   // ── 4. Timeline envelope ──────────────────────────────────────────────────
 
-  let timelineEnvelope = makeUnavailable<ReturnType<typeof normaliseTimelineFromTSDB>>("Timeline", "thesportsdb")
+  let timelineEnvelope = makeUnavailable<ReturnType<typeof normaliseTimelineFromTSDB>>("Timeline", "sf_api")
 
   // Try structured SF-API timeline first
   const sfTimeline = sfEvent?.timeline || sfEvent?.events || null
   if (Array.isArray(sfTimeline) && sfTimeline.length > 0) {
     const events = normaliseTimelineFromSFAPI(sfTimeline)
-    timelineEnvelope = makeEnvelope(events, "thesportsdb", {
+    timelineEnvelope = makeEnvelope(events, "sf_api", {
       fetchedAt,
       confidence: "high",
       maxAgeSeconds: 30,
@@ -240,7 +298,7 @@ export async function GET(
     // Fall back to TSDB goal/card string fields
     const events = normaliseTimelineFromTSDB(sfEvent)
     if (events.length > 0) {
-      timelineEnvelope = makeEnvelope(events, "thesportsdb", {
+      timelineEnvelope = makeEnvelope(events, "sf_api", {
         fetchedAt,
         partial: true,
         confidence: "medium",
@@ -251,32 +309,39 @@ export async function GET(
 
   // ── 5. Stats envelope ─────────────────────────────────────────────────────
 
-  let statsEnvelope = makeUnavailable<ReturnType<typeof normaliseStatsFromTSDB>>("Statistics", "thesportsdb")
+  let statsEnvelope = makeUnavailable<ReturnType<typeof normaliseStatsFromTSDB>>("Statistics", "sf_api")
 
   const sfStats = sfEvent?.statistics || sfEvent?.stats || null
   if (Array.isArray(sfStats) && sfStats.length > 0) {
     const stats = normaliseStatsFromSFAPI(sfStats)
     if (stats.length > 0) {
-      statsEnvelope = makeEnvelope(stats, "thesportsdb", { fetchedAt, confidence: "high" })
+      statsEnvelope = makeEnvelope(stats, "sf_api", { fetchedAt, confidence: "high" })
     }
   } else if (sfEvent) {
     const stats = normaliseStatsFromTSDB(sfEvent)
     if (stats.length > 0) {
-      statsEnvelope = makeEnvelope(stats, "thesportsdb", { fetchedAt, partial: true, confidence: "medium" })
+      statsEnvelope = makeEnvelope(stats, "sf_api", { fetchedAt, partial: true, confidence: "medium" })
     }
   }
 
   // ── 6. Standings envelope ─────────────────────────────────────────────────
 
-  let standingsEnvelope = makeUnavailable<ReturnType<typeof normaliseStandingsFromTSDB>>("Standings", "thesportsdb")
+  let standingsEnvelope = makeUnavailable<ReturnType<typeof normaliseStandingsFromTSDB>>("Standings", "sf_api")
 
   const leagueId = ev?.idLeague
   if (leagueId) {
     try {
-      const table = await getLeagueTable(leagueId, ev?.strSeason)
+        let table = await getLeagueTable(leagueId, ev?.strSeason)
+        if (table.length === 0) table = await getLeagueTable(leagueId)
       if (table.length > 0) {
-        const normalised = normaliseStandingsFromTSDB(table, ev?.idHomeTeam, ev?.idAwayTeam)
-        standingsEnvelope = makeEnvelope(normalised, "thesportsdb", {
+        const normalised = normaliseStandingsFromTSDB(
+          table,
+          ev?.idHomeTeam,
+          ev?.idAwayTeam,
+          ev?.strHomeTeam,
+          ev?.strAwayTeam,
+        )
+        standingsEnvelope = makeEnvelope(normalised, "sf_api", {
           fetchedAt,
           confidence: "high",
           maxAgeSeconds: 900,
@@ -289,11 +354,18 @@ export async function GET(
 
   // ── 7. TV envelope ────────────────────────────────────────────────────────
 
-  let tvEnvelope = makeUnavailable<MatchTvInfo>("TV listings", "thesportsdb")
+  let tvEnvelope = makeUnavailable<MatchTvInfo>("TV listings", "sf_api")
 
-  const tvInfo = normaliseTvChannels(sfEvent)
+  let tvEvents = (await getTVEventsForEvent(eventId).catch(() => [])).filter((item: any) =>
+    tvEventMatches(item, ev, eventId),
+  )
+  if ((!tvEvents || tvEvents.length === 0) && ev?.dateEvent) {
+    const byDate = await getTVEventsByDateRange(ev.dateEvent, ev.dateEvent).catch(() => [])
+    tvEvents = byDate.filter((item: any) => tvEventMatches(item, ev, eventId))
+  }
+  const tvInfo = normaliseTvChannels(sfEvent, tvEvents)
   if (tvInfo) {
-    tvEnvelope = makeEnvelope(tvInfo, "thesportsdb", {
+    tvEnvelope = makeEnvelope(tvInfo, "sf_api", {
       fetchedAt,
       confidence: "medium",
       maxAgeSeconds: 3600,
@@ -302,7 +374,7 @@ export async function GET(
 
   // ── 8. Highlights envelope ────────────────────────────────────────────────
 
-  let highlightsEnvelope = makeUnavailable<MatchHighlightItem[]>("Highlights", "thesportsdb")
+  let highlightsEnvelope = makeUnavailable<MatchHighlightItem[]>("Highlights", "sf_api")
 
   const tsdbHighlights = normaliseHighlightsFromTSDB(
     ev?.strVideo,
@@ -319,7 +391,7 @@ export async function GET(
           title: item.title || "Highlight",
           url: item.videoUrl,
           thumbnail: item.thumbnailUrl || undefined,
-          provider: "thesportsdb",
+          provider: "sf_api",
           publishedAt: item.date || undefined,
         })
       }
@@ -331,7 +403,7 @@ export async function GET(
   )
 
   if (allHighlights.length > 0) {
-    highlightsEnvelope = makeEnvelope(allHighlights, "thesportsdb", {
+    highlightsEnvelope = makeEnvelope(allHighlights, "sf_api", {
       fetchedAt,
       confidence: "medium",
       maxAgeSeconds: 3600,
@@ -366,7 +438,21 @@ export async function GET(
   // can make visibility decisions without a separate /api/coverage round-trip.
   const sportKey = deriveSportKey(ev?.strSport ?? null)
   const competitionId = ev?.idLeague ?? null
-  const coverageHints = buildMatchCenterCoverageHints(sportKey, competitionId)
+  const coverageHints = Object.fromEntries(
+    Object.entries(buildMatchCenterCoverageHints(sportKey, competitionId)).map(([key, value]: [string, any]) => [
+      key,
+      {
+        ...value,
+        primaryProvider:
+          value.primaryProvider === "derived" ||
+          value.primaryProvider === "editorial" ||
+          value.primaryProvider === "external" ||
+          value.primaryProvider === "internal"
+            ? value.primaryProvider
+            : "sf_api",
+      },
+    ]),
+  ) as ReturnType<typeof buildMatchCenterCoverageHints>
 
   const response: MatchCenterResponse = {
     event: eventEnvelope,

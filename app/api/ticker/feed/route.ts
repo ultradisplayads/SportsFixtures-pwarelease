@@ -14,6 +14,7 @@ import { tournamentDtoToState } from "@/lib/tournament-mode"
 import { resolveTournamentSurfaceDecision, getTournamentTickerPriorityBoost } from "@/lib/tournament-surface"
 import { buildLiveScoreItems, buildResultItems, type RawLiveEvent } from "@/lib/ticker-live"
 import { buildBreakingNewsItems, buildTvNowItems, type RawNewsArticle, type RawTvListing } from "@/lib/ticker-news"
+import { cachedProviderJson } from "@/lib/provider-cache"
 
 const SPORTSDB_API_KEY = process.env.SPORTSDB_API_KEY || "3"
 const API_BASE_V2 = "https://www.thesportsdb.com/api/v2/json"
@@ -31,22 +32,27 @@ async function fetchSFLiveScores(): Promise<TickerItem[]> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 6000)
 
-    const res = await fetch(
-      `${SF_API_URL}/api/events?filters[strStatus][$eq]=live&pagination[pageSize]=50`,
-      {
-        cache: "no-store",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
-        },
+    const endpoint = "/api/events?filters[strStatus][$eq]=live&pagination[pageSize]=50"
+    const json = await cachedProviderJson({
+      provider: "strapi",
+      endpoint: `GET:${endpoint}`,
+      ttlSeconds: 15,
+      fetcher: async () => {
+        const res = await fetch(`${SF_API_URL}${endpoint}`, {
+          cache: "no-store",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
+          },
+        })
+        if (!res.ok) return null
+        return res.json()
       },
-    )
+    })
     clearTimeout(timeout)
 
-    if (!res.ok) return []
-
-    const json = await res.json()
+    if (!json) return []
     const rows: any[] = Array.isArray(json?.data)
       ? json.data
       : Array.isArray(json?.events)
@@ -93,13 +99,21 @@ async function fetchLiveScores(sport: string): Promise<TickerItem[]> {
   if (SPORTSDB_API_KEY === "3") return []
 
   try {
-    const res = await fetch(`${API_BASE_V2}/livescore/${sport}`, {
-      headers: { "X-API-KEY": SPORTSDB_API_KEY },
-      cache: "no-store",
+    const text = await cachedProviderJson({
+      provider: "sportsdb-v2",
+      endpoint: `GET:livescore/${sport}`,
+      ttlSeconds: 15,
+      cacheNull: true,
+      fetcher: async () => {
+        const res = await fetch(`${API_BASE_V2}/livescore/${sport}`, {
+          headers: { "X-API-KEY": SPORTSDB_API_KEY },
+          cache: "no-store",
+        })
+        if (!res.ok) return null
+        return res.text()
+      },
     })
-    if (!res.ok) return []
 
-    const text = await res.text()
     if (!text || text.trim() === "" || text.trim() === "null") return []
 
     const data = JSON.parse(text)
@@ -141,20 +155,27 @@ async function fetchBreakingNews(): Promise<TickerItem[]> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
 
-    const url = `${SF_API_URL}/api/news?filters[isBreaking][$eq]=true&sort=publishedAt:desc&pagination[pageSize]=6`
-    const res = await fetch(url, {
-      cache: "no-store",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
+    const endpoint = "/api/news?filters[isBreaking][$eq]=true&sort=publishedAt:desc&pagination[pageSize]=6"
+    const json = await cachedProviderJson({
+      provider: "strapi",
+      endpoint: `GET:${endpoint}`,
+      ttlSeconds: 60,
+      fetcher: async () => {
+        const res = await fetch(`${SF_API_URL}${endpoint}`, {
+          cache: "no-store",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
+          },
+        })
+        if (!res.ok) return null
+        return res.json()
       },
     })
     clearTimeout(timeout)
 
-    if (!res.ok) return []
-
-    const json = await res.json()
+    if (!json) return []
     const articles: any[] = json?.data ?? json?.articles ?? []
 
     const rawArticles: RawNewsArticle[] = articles.map((a: any) => ({
@@ -190,19 +211,26 @@ async function fetchTvNow(): Promise<TickerItem[]> {
     url.searchParams.set("pagination[page]", "1")
     url.searchParams.set("pagination[pageSize]", "10")
 
-    const res = await fetch(url.toString(), {
-      cache: "no-store",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
+    const json = await cachedProviderJson({
+      provider: "strapi",
+      endpoint: `GET:${url.pathname}${url.search}`,
+      ttlSeconds: 60,
+      fetcher: async () => {
+        const res = await fetch(url.toString(), {
+          cache: "no-store",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            ...(SF_API_TOKEN ? { Authorization: `Bearer ${SF_API_TOKEN}` } : {}),
+          },
+        })
+        if (!res.ok) return null
+        return res.json()
       },
     })
     clearTimeout(timeout)
 
-    if (!res.ok) return []
-
-    const json = await res.json()
+    if (!json) return []
     const rows: any[] = Array.isArray(json?.data) ? json.data : []
 
     // Only include events on air roughly now (within 2h window)

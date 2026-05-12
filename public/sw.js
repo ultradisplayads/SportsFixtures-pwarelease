@@ -2,7 +2,7 @@
 // Handles: shell caching, offline fallback, background sync, push notifications,
 // share target, and typed message protocol (mirrors lib/sw-messages.ts).
 
-const SHELL_CACHE = "sf-shell-v2"
+const SHELL_CACHE = "sf-shell-v3"
 
 const SHELL_URLS = [
   "/",
@@ -19,6 +19,7 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_URLS)),
   )
+  self.skipWaiting()
 })
 
 // ── Activate ─────────────────────────────────────────────────────────────────
@@ -125,22 +126,47 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body:    data.body,
-      icon:    "/icon-192x192.png",
-      badge:   "/logo.png",
-      data:    { url: data.url ?? "/" },
-      tag:     "sf-push",
-      renotify: true,
+      icon:    data.icon || "/icon-192x192.png",
+      badge:   data.badge || "/logo.png",
+      image:   data.image,
+      data:    {
+        url: data.url ?? data.data?.url ?? "/",
+        primaryUrl: data.primaryUrl,
+        secondaryUrl: data.secondaryUrl,
+        campaignId: data.campaignId ?? data.data?.campaignId,
+        category: data.category,
+      },
+      tag:     data.tag || `sf-${data.category || "push"}`,
+      renotify: data.renotify ?? true,
+      requireInteraction: data.requireInteraction ?? false,
+      actions: Array.isArray(data.actions) ? data.actions.slice(0, 2) : [],
     }),
   )
 })
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()
-  const url = event.notification.data?.url ?? "/"
+  const data = event.notification.data || {}
+  const url =
+    event.action === "primary"
+      ? data.primaryUrl || data.url || "/"
+      : event.action === "secondary"
+      ? data.secondaryUrl || data.url || "/"
+      : data.url || "/"
   event.waitUntil(
-    self.clients
-      .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clients) => {
+    Promise.all([
+      fetch("/api/push/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId: data.campaignId,
+          category: data.category,
+          action: event.action || "default",
+          url,
+        }),
+      }).catch(() => null),
+      self.clients.matchAll({ type: "window", includeUncontrolled: true }),
+    ]).then(([, clients]) => {
         for (const client of clients) {
           if (client.url === url && "focus" in client) return client.focus()
         }

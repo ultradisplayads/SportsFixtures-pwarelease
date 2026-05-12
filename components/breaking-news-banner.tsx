@@ -4,11 +4,13 @@ import { useState, useEffect } from "react"
 import { Zap, X, ChevronRight } from "lucide-react"
 import Link from "next/link"
 import { triggerHaptic } from "@/lib/haptic-feedback"
+import { buildNewsExitHref } from "@/lib/news-exit"
 
 interface BreakingItem {
   id: string
   title: string
   url?: string
+  source?: string
 }
 
 // Cycles through breaking headlines as a scrolling ticker
@@ -27,6 +29,7 @@ export function BreakingNewsBanner() {
             id: String(a.id ?? Math.random()),
             title: a.title ?? a.strTitle ?? "",
             url: a.url ?? a.strUrl,
+            source: a.source ?? a.strSource,
           }))
           if (list.length) setItems(list)
         }
@@ -52,9 +55,7 @@ export function BreakingNewsBanner() {
         <span className="text-[11px] font-bold uppercase tracking-wider text-red-500">Breaking</span>
       </div>
       <Link
-        href={current.url ?? "/news"}
-        target={current.url ? "_blank" : undefined}
-        rel={current.url ? "noopener noreferrer" : undefined}
+        href={buildNewsExitHref(current)}
         className="min-w-0 flex-1"
         onClick={() => triggerHaptic("light")}
       >

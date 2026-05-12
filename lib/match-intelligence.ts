@@ -117,7 +117,7 @@ export function makeUnavailable<T>(
     source,
     freshness: "unknown",
     confidence: "low",
-    unavailableReason: `${feature} is not currently available from ${source}`,
+    unavailableReason: `${feature} is not currently available yet.`,
   }
 }
 
@@ -346,9 +346,20 @@ export function normaliseStatsFromSFAPI(raw: any[]): MatchStatItem[] {
 export function normaliseStandingsFromTSDB(
   raw: any[],
   homeTeamId?: string,
-  awayTeamId?: string
+  awayTeamId?: string,
+  homeTeamName?: string,
+  awayTeamName?: string
 ): MatchStandingsRow[] {
   if (!Array.isArray(raw)) return []
+  const clean = (value?: string) =>
+    String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+  const homeName = clean(homeTeamName)
+  const awayName = clean(awayTeamName)
   return raw.map((row: any) => ({
     rank: parseInt(row.intRank, 10) || 0,
     teamId: String(row.idTeam || ""),
@@ -363,8 +374,14 @@ export function normaliseStandingsFromTSDB(
     goalDiff: parseInt(row.intGoalDifference, 10) || 0,
     points: parseInt(row.intPoints, 10) || 0,
     form: row.strForm || undefined,
-    isHomeTeam: homeTeamId ? row.idTeam === homeTeamId : undefined,
-    isAwayTeam: awayTeamId ? row.idTeam === awayTeamId : undefined,
+    isHomeTeam: Boolean(
+      (homeTeamId && row.idTeam === homeTeamId) ||
+        (homeName && clean(row.strTeam) === homeName),
+    ),
+    isAwayTeam: Boolean(
+      (awayTeamId && row.idTeam === awayTeamId) ||
+        (awayName && clean(row.strTeam) === awayName),
+    ),
   }))
 }
 
@@ -500,5 +517,3 @@ export function deriveInsightsFromContext(input: {
 
   return insights
 }
-
-

@@ -33,7 +33,7 @@ export default function DeleteAccountPage() {
           body: JSON.stringify({ deviceToken }),
         })
         const json = await res.json()
-        if (!json.success) throw new Error("Server deletion failed")
+        if (!json.success && res.status !== 401) throw new Error("Server deletion failed")
       }
 
       // Client-side cleanup

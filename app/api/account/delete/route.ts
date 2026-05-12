@@ -1,9 +1,7 @@
 // app/api/account/delete/route.ts
 // POST /api/account/delete
-// Handles real account deletion for both modes:
-//   - signed_in: calls Strapi /auth/local/delete-account (or custom plugin endpoint)
-//                then also clears device-local rows from Strapi
-//   - anonymous_device: clears device-local rows from Strapi only
+// Handles signed-in account deletion. Anonymous-device server deletion is blocked
+// until device tokens are issued as server-signed, ownership-verifiable tokens.
 
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
@@ -41,6 +39,7 @@ export async function POST(req: Request) {
   const authHeader = req.headers.get("authorization") || ""
   const jwt =
     authHeader.replace(/^Bearer\s+/i, "").trim() ||
+    cookieStore.get("sf_auth")?.value ||
     cookieStore.get("sf_jwt")?.value ||
     ""
 
@@ -88,6 +87,7 @@ export async function POST(req: Request) {
       }
 
       const response = NextResponse.json({ success: true })
+      response.cookies.delete("sf_auth")
       response.cookies.delete("sf_jwt")
       return response
     } catch (err: any) {
@@ -97,18 +97,11 @@ export async function POST(req: Request) {
   }
 
   // ── Anonymous / device-only mode ──────────────────────────────────────
-  if (!deviceToken) {
-    return NextResponse.json(
-      { success: false, error: "No account or device token provided" },
-      { status: 400 },
-    )
-  }
-
-  try {
-    await deleteDeviceRows(deviceToken)
-    return NextResponse.json({ success: true })
-  } catch (err: any) {
-    console.error("[delete-account/device]", err)
-    return NextResponse.json({ success: false, error: "Deletion failed" }, { status: 500 })
-  }
+  return NextResponse.json(
+    {
+      success: false,
+      error: "Sign in is required for server-side account deletion. Anonymous local data can be cleared on this device.",
+    },
+    { status: 401 },
+  )
 }

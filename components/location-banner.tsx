@@ -1,35 +1,26 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { MapPin, X, Beer } from "lucide-react"
+import { MapPin, Beer, Settings } from "lucide-react"
 import Link from "next/link"
 import { useLocation } from "./location-provider"
 import { triggerHaptic } from "@/lib/haptic-feedback"
 
 export function LocationBanner() {
-  const { location, loading, error, requestLocation } = useLocation()
+  const { location, loading, error, locationEnabled, requestLocation } = useLocation()
   const [showBanner, setShowBanner] = useState(false)
 
   useEffect(() => {
-    const dismissed = localStorage.getItem("locationBannerDismissed")
-    if (!location && !dismissed) {
-      setShowBanner(true)
-    }
-  }, [location])
+    setShowBanner(locationEnabled && !location)
+  }, [location, locationEnabled])
 
   const handleEnable = async () => {
     triggerHaptic("medium")
     await requestLocation()
-    setShowBanner(false)
+    if (!error) setShowBanner(false)
   }
 
-  const handleDismiss = () => {
-    triggerHaptic("light")
-    localStorage.setItem("locationBannerDismissed", "true")
-    setShowBanner(false)
-  }
-
-  if (!showBanner || location) {
+  if (!showBanner || location || !locationEnabled) {
     return null
   }
 
@@ -44,7 +35,7 @@ export function LocationBanner() {
           <div className="flex-1">
             <h3 className="text-sm font-semibold">Find Local Matches</h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Enable location to see nearby matches and local teams
+              Location-aware results are on by default for nearby matches and local teams
             </p>
             {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
             <div className="mt-2 flex gap-2">
@@ -53,14 +44,16 @@ export function LocationBanner() {
                 disabled={loading}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                {loading ? "Getting Location..." : "Enable"}
+                {loading ? "Getting Location..." : "Use My Location"}
               </button>
-              <button
-                onClick={handleDismiss}
-                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent"
+              <Link
+                href="/settings#location"
+                onClick={() => triggerHaptic("selection")}
+                className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent"
               >
-                Not Now
-              </button>
+                <Settings className="h-3 w-3" />
+                Settings
+              </Link>
             </div>
           </div>
         </div>
@@ -76,7 +69,7 @@ export function LocationBanner() {
           <div className="flex-1">
             <h3 className="text-sm font-semibold">Find Places to Watch</h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Discover venues showing live sport near you
+              Discover venues showing live sport near your current area
             </p>
             <Link
               href="/venues"
@@ -86,13 +79,6 @@ export function LocationBanner() {
               Find Venues
             </Link>
           </div>
-        </div>
-
-        {/* Dismiss button */}
-        <div className="flex items-start pt-3 pr-3">
-          <button onClick={handleDismiss} className="rounded-md p-1 hover:bg-accent" aria-label="Dismiss">
-            <X className="h-3.5 w-3.5" />
-          </button>
         </div>
       </div>
     </div>

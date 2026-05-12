@@ -44,6 +44,7 @@ export function VenueFiltersSheet({
   const activeCount = [
     filters.maxDistanceKm != null,
     !!filters.offersOnly,
+    !!filters.foodOnly,
     !!filters.followedOnly,
     (filters.facilityKeys?.length ?? 0) > 0,
     (filters.venueTypes?.length ?? 0) > 0,
@@ -75,6 +76,7 @@ export function VenueFiltersSheet({
       maxDistanceKm: undefined,
       facilityKeys: [],
       offersOnly: false,
+      foodOnly: false,
       followedOnly: false,
       venueTypes: [],
       foodOptions: [],
@@ -202,6 +204,16 @@ export function VenueFiltersSheet({
                 id="offers-only"
                 checked={!!filters.offersOnly}
                 onCheckedChange={(v) => set({ offersOnly: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="food-only" className="text-sm font-medium">
+                Food available only
+              </Label>
+              <Switch
+                id="food-only"
+                checked={!!filters.foodOnly}
+                onCheckedChange={(v) => set({ foodOnly: v })}
               />
             </div>
             <div className="flex items-center justify-between">

@@ -7,10 +7,14 @@ import { FixturesList } from "@/components/fixtures-list"
 import { BottomNav } from "@/components/bottom-nav"
 import { FilterButton } from "@/components/filter-button"
 import { HeaderMenu } from "@/components/header-menu"
+import { FixturesFilterProvider } from "@/lib/fixtures-filter-context"
+import { FixturesUrlSync } from "@/components/fixtures-url-sync"
 
 export default function FixturesPage() {
   return (
+    <FixturesFilterProvider>
     <div className="flex min-h-screen flex-col bg-background pb-20">
+      <FixturesUrlSync />
       {/* Live Ticker */}
       <LiveTicker />
 
@@ -36,5 +40,6 @@ export default function FixturesPage() {
       {/* Bottom Navigation */}
       <BottomNav />
     </div>
+    </FixturesFilterProvider>
   )
 }

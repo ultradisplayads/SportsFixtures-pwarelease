@@ -217,7 +217,7 @@ export default function AdminPushPage() {
               ))}
             </div>
             <div className="mt-3">
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Custom Team ID (TheSportsDB)</label>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Custom Team ID</label>
               <input
                 value={customTeamId}
                 onChange={(e) => setCustomTeamId(e.target.value)}

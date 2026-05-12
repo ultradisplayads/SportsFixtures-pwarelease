@@ -12,7 +12,7 @@ const TOGGLE_ITEMS: { key: keyof PushPreferences; label: string; description: st
   { key: "cards",       label: "Cards",            description: "Yellow and red card alerts" },
   { key: "lineups",     label: "Lineups",          description: "Confirmed team lineups" },
   { key: "venueOffers", label: "Venue Offers",     description: "Nearby bar and venue promotions" },
-  { key: "advertising", label: "Sponsor Alerts",   description: "Offers from our advertising partners" },
+  { key: "advertising", label: "Partner Offers",   description: "Offers from Sports Fixtures partners" },
 ]
 
 export function NotificationSettings({

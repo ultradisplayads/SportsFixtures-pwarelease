@@ -20,13 +20,14 @@ export default function HomePage() {
         <LiveTicker />
         <HeaderMenu />
         <LocationBanner />
-        <SearchBar />
-
-        {/* Timezone + Nearby quick-access bar */}
-        <div className="flex items-center gap-2 overflow-x-auto border-b border-border bg-background px-3 py-2 scrollbar-hide">
-          <TimezoneSelector />
-          <NearbyEventFilter />
-        </div>
+        <SearchBar
+          actions={
+            <>
+              <TimezoneSelector />
+              <NearbyEventFilter />
+            </>
+          }
+        />
 
         {/* Modules rendered in user's saved order */}
         <HomeModuleRenderer />

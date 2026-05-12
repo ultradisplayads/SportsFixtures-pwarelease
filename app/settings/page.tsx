@@ -2,12 +2,12 @@
 
 import React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { ChevronRight, Bell, FileText, Shield, User, Crown, Trash2, LayoutDashboard, Sparkles, RotateCcw, Sliders, Settings2 } from "lucide-react"
+import { ChevronRight, Bell, FileText, Shield, User, Crown, Trash2, LayoutDashboard, Sparkles, RotateCcw, Sliders, Settings2, MapPin } from "lucide-react"
 import { HeaderMenu } from "@/components/header-menu"
 import { BottomNav } from "@/components/bottom-nav"
 import { PremiumBadge } from "@/components/premium-badge"
 import { useAppSettings } from "@/hooks/use-app-settings"
+import { useLocation } from "@/components/location-provider"
 
 const accountItems = [
   { href: "/premium",                   title: "Subscription",      description: "Bronze / Silver / Gold — Launch Pass active",          icon: Crown },
@@ -89,8 +89,53 @@ function SettingsToggleRow({
   )
 }
 
+function SettingsSegmentedRow({
+  icon: Icon,
+  title,
+  description,
+  value,
+  onChange,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  title: string
+  description: string
+  value: "dark" | "light"
+  onChange: (value: "dark" | "light") => void
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="flex items-start gap-3">
+        <div className="rounded-lg bg-primary/10 p-2 text-primary">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="flex-1">
+          <div className="font-semibold">{title}</div>
+          <div className="text-sm text-muted-foreground">{description}</div>
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-background p-1">
+            {(["dark", "light"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => onChange(option)}
+                className={`rounded-md px-3 py-2 text-sm font-semibold capitalize transition-colors ${
+                  value === option
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SettingsPage() {
-  const { settings, toggle } = useAppSettings()
+  const { settings, toggle, set } = useAppSettings()
+  const { location, locationEnabled, setLocationEnabled, requestLocation, loading, error } = useLocation()
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
       <HeaderMenu />
@@ -108,6 +153,43 @@ export default function SettingsPage() {
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Account</p>
           <div className="space-y-3">
             {accountItems.map((item) => <SettingsRow key={item.href} {...item} />)}
+          </div>
+        </div>
+
+        {/* App */}
+        <div id="location" className="mb-6 scroll-mt-20">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Location Awareness</p>
+          <div className="space-y-3">
+            <SettingsToggleRow
+              icon={MapPin}
+              title="Location-Aware App"
+              description="On by default for nearby matches, venues, offers, check-ins, and smart local recommendations"
+              enabled={locationEnabled}
+              onToggle={() => setLocationEnabled(!locationEnabled)}
+            />
+            {locationEnabled && (
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">Current Location</div>
+                    <div className="text-sm text-muted-foreground">
+                      {location
+                        ? `${location.city || "Location active"}${location.country ? `, ${location.country}` : ""}`
+                        : "Waiting for browser permission"}
+                    </div>
+                    {error && <div className="mt-1 text-xs text-destructive">{error}</div>}
+                  </div>
+                  <button
+                    onClick={() => requestLocation()}
+                    disabled={loading}
+                    className="shrink-0 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-60"
+                    type="button"
+                  >
+                    {loading ? "Checking..." : "Refresh"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -136,6 +218,13 @@ export default function SettingsPage() {
               description="Colour animations for your team colours on match day"
               enabled={settings.fanMode}
               onToggle={() => toggle("fanMode")}
+            />
+            <SettingsSegmentedRow
+              icon={Sparkles}
+              title="Fan Mode Background"
+              description="Choose dark stadium-style bursts or lighter colour washes"
+              value={settings.fanModeBackground}
+              onChange={(value) => set("fanModeBackground", value)}
             />
           </div>
         </div>

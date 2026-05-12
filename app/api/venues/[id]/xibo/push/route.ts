@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { requireAdminSession } from "@/lib/server/admin-auth"
 
 const STRAPI = () =>
   (process.env.SF_API_URL || "http://localhost:1337")
@@ -6,9 +7,12 @@ const STRAPI = () =>
     .replace(/\/$/, "")
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const session = await requireAdminSession(req)
+  if (!session.ok) return session.response
+
   try {
     const { id } = await context.params  // ← await params in Next.js 15
 
@@ -16,7 +20,10 @@ export async function POST(
       `${STRAPI()}/api/watch-venues/${id}/xibo/push`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${session.jwt}`,
+          "Content-Type": "application/json",
+        },
       }
     )
     const data = await res.json()

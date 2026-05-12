@@ -9,7 +9,7 @@ export async function GET() {
     const STRAPI = process.env.STRAPI_URL
     if (STRAPI) {
       const res = await fetch(`${STRAPI}/api/matches?fields[0]=slug&fields[1]=updatedAt&pagination[pageSize]=500`, {
-        next: { revalidate: 1800 },
+        next: { revalidate: 120, tags: ["strapi", "seo", "sitemap", "strapi:match"] },
         headers: process.env.STRAPI_API_TOKEN
           ? { Authorization: `Bearer ${process.env.STRAPI_API_TOKEN}` }
           : {},
@@ -20,12 +20,16 @@ export async function GET() {
           slug: m.attributes?.slug ?? m.slug ?? "",
           updatedAt: m.attributes?.updatedAt ?? m.updatedAt ?? new Date().toISOString(),
         }))
-        return NextResponse.json(rows)
+        return NextResponse.json(rows, {
+          headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=1800" },
+        })
       }
     }
   } catch {
     // Fall through to empty
   }
 
-  return NextResponse.json([])
+  return NextResponse.json([], {
+    headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=1800" },
+  })
 }

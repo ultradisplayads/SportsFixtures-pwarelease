@@ -22,13 +22,15 @@ export async function POST(req: NextRequest) {
       preferences = {},
       followedTeams = [],
       followedLeagues = [],
+      reminderOffsets = [],
+      categories = [],
     } = body
 
     if (!endpoint || !p256dh || !auth) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    await fetch(`${SF_API_URL}/api/push-subscriptions/subscribe`, {
+    const res = await fetch(`${SF_API_URL}/api/push-subscriptions/subscribe`, {
       method: "POST",
       headers: strapiHeaders,
       body: JSON.stringify({
@@ -45,12 +47,18 @@ export async function POST(req: NextRequest) {
         pref_fulltime: preferences.fulltime ?? true,
         pref_cards: preferences.cards ?? false,
         pref_lineups: preferences.lineups ?? false,
-        pref_venue_offers: preferences.venueOffers ?? false,
-        pref_advertising: preferences.advertising ?? false,
+        pref_venue_offers: preferences.venueOffers ?? true,
+        pref_advertising: preferences.advertising ?? true,
         followed_teams: followedTeams,
         followed_leagues: followedLeagues,
+        reminder_offsets: reminderOffsets,
+        categories,
       }),
     })
+
+    if (!res.ok) {
+      return NextResponse.json({ error: "Failed to subscribe" }, { status: 502 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
@@ -64,11 +72,15 @@ export async function DELETE(req: NextRequest) {
     const { endpoint } = await req.json()
     if (!endpoint) return NextResponse.json({ error: "Missing endpoint" }, { status: 400 })
 
-    await fetch(`${SF_API_URL}/api/push-subscriptions/unsubscribe`, {
+    const res = await fetch(`${SF_API_URL}/api/push-subscriptions/unsubscribe`, {
       method: "DELETE",
       headers: strapiHeaders,
       body: JSON.stringify({ endpoint }),
     })
+
+    if (!res.ok) {
+      return NextResponse.json({ error: "Failed to unsubscribe" }, { status: 502 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
@@ -79,14 +91,18 @@ export async function DELETE(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { endpoint, preferences, followedTeams, followedLeagues, lat, lng, country, timezone, tier } = await req.json()
+    const { endpoint, preferences, followedTeams, followedLeagues, lat, lng, country, timezone, tier, reminderOffsets, categories } = await req.json()
     if (!endpoint) return NextResponse.json({ error: "Missing endpoint" }, { status: 400 })
 
-    await fetch(`${SF_API_URL}/api/push-subscriptions/update-prefs`, {
+    const res = await fetch(`${SF_API_URL}/api/push-subscriptions/update-prefs`, {
       method: "PATCH",
       headers: strapiHeaders,
-      body: JSON.stringify({ endpoint, preferences, followedTeams, followedLeagues, lat, lng, country, timezone, tier }),
+      body: JSON.stringify({ endpoint, preferences, followedTeams, followedLeagues, lat, lng, country, timezone, tier, reminderOffsets, categories }),
     })
+
+    if (!res.ok) {
+      return NextResponse.json({ error: "Failed to update preferences" }, { status: 502 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

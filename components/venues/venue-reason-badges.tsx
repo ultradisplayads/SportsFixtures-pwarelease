@@ -7,6 +7,10 @@ const REASON_LABELS: Record<VenueDiscoveryReason, string> = {
   showing_this_competition: "Showing this competition",
   you_follow_this_venue: "You follow this venue",
   has_live_offer: "Has an offer",
+  open_now: "Open now",
+  screens_available: "Screens available",
+  match_time_fit: "Good for kickoff",
+  crowd_interest: "Fans checked in",
   editorial_boost: "Featured",
   sponsored: "Sponsored",
 }
@@ -16,6 +20,8 @@ const HIGHLIGHT_REASONS = new Set<VenueDiscoveryReason>([
   "showing_this_match",
   "you_follow_this_venue",
   "has_live_offer",
+  "open_now",
+  "crowd_interest",
 ])
 
 interface Props {

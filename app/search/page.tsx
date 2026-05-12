@@ -1,11 +1,14 @@
 import { searchTeams, searchPlayers } from "@/app/actions/sports-api"
+import { globalSearch } from "@/app/actions/global-search"
 import { HeaderMenu } from "@/components/header-menu"
 import { BottomNav } from "@/components/bottom-nav"
 import { SearchResults } from "@/components/search-results"
 import { Suspense } from "react"
 import { SkeletonLoader } from "@/components/skeleton-loader"
 
-export default function SearchPage({ searchParams }: { searchParams: { q?: string } }) {
+export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const params = await searchParams
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <HeaderMenu />
@@ -13,16 +16,16 @@ export default function SearchPage({ searchParams }: { searchParams: { q?: strin
       <div className="flex-1 overflow-auto pb-20">
         <div className="border-b border-border bg-card p-4">
           <h1 className="text-xl font-bold">Search Results</h1>
-          {searchParams.q && <p className="mt-1 text-sm text-muted-foreground">Results for "{searchParams.q}"</p>}
+          {params.q && <p className="mt-1 text-sm text-muted-foreground">Results for "{params.q}"</p>}
         </div>
 
-        {searchParams.q ? (
+        {params.q ? (
           <Suspense fallback={<SkeletonLoader count={6} />}>
-            <SearchContent query={searchParams.q} />
+            <SearchContent query={params.q} />
           </Suspense>
         ) : (
           <div className="flex flex-col items-center justify-center p-12 text-center">
-            <p className="text-muted-foreground">Enter a search term to find teams, players, and leagues</p>
+            <p className="text-muted-foreground">Enter a search term to find sports, countries, leagues, events, venues, offers, teams and players</p>
           </div>
         )}
       </div>
@@ -33,7 +36,7 @@ export default function SearchPage({ searchParams }: { searchParams: { q?: strin
 }
 
 async function SearchContent({ query }: { query: string }) {
-  const [teams, players] = await Promise.all([searchTeams(query), searchPlayers(query)])
+  const [teams, players, global] = await Promise.all([searchTeams(query), searchPlayers(query), globalSearch(query)])
 
-  return <SearchResults teams={teams} players={players} query={query} />
+  return <SearchResults teams={teams} players={players} global={global} query={query} />
 }

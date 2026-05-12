@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { makeSuccessEnvelope, makeEmptyEnvelope } from "@/lib/contracts"
 import { buildWarning } from "@/lib/validation"
+import { cachedProviderJson } from "@/lib/provider-cache"
 import type { NormalizedEnvelope } from "@/types/contracts"
 
 const SPORTSDB_API_KEY = process.env.SPORTSDB_API_KEY || "3"
@@ -14,35 +15,44 @@ export async function GET(request: Request): Promise<NextResponse> {
   // Free key "3" does not have access to v2 livescores
   if (SPORTSDB_API_KEY === "3") {
     const envelope: NormalizedEnvelope<{ livescores: unknown[] }> = makeEmptyEnvelope({
-      source: "thesportsdb",
-      unavailableReason: "Free API key (3) does not have access to v2 live scores. A paid SPORTSDB_API_KEY is required.",
+      source: "internal",
+      unavailableReason: "Live scores are not available from the configured SportsFixtures data feed.",
     })
     return NextResponse.json(envelope)
   }
 
   try {
-    const res = await fetch(`${API_BASE_V2}/livescore/${sport}`, {
-      headers: { "X-API-KEY": SPORTSDB_API_KEY },
-      cache: "no-store",
+    const text = await cachedProviderJson({
+      provider: "sportsdb-v2",
+      endpoint: `GET:livescore/${sport}`,
+      ttlSeconds: 15,
+      cacheNull: true,
+      fetcher: async () => {
+        const res = await fetch(`${API_BASE_V2}/livescore/${sport}`, {
+          headers: { "X-API-KEY": SPORTSDB_API_KEY },
+          cache: "no-store",
+        })
+
+        if (!res.ok) return null
+        return res.text()
+      },
     })
 
-    if (!res.ok) {
+    if (text == null) {
       const envelope: NormalizedEnvelope<{ livescores: unknown[] }> = makeEmptyEnvelope({
-        source: "thesportsdb",
-        unavailableReason: `TheSportsDB returned HTTP ${res.status}`,
+        source: "internal",
+        unavailableReason: "Live scores are temporarily unavailable.",
       })
       return NextResponse.json(envelope)
     }
-
-    const text = await res.text()
     if (!text || text.trim() === "" || text.trim() === "null") {
       const envelope: NormalizedEnvelope<{ livescores: unknown[] }> = makeSuccessEnvelope({
         data: { livescores: [] },
-        source: "thesportsdb",
+        source: "internal",
         fetchedAt,
         maxAgeSeconds: 30,
         live: true,
-        warnings: [buildWarning("EMPTY_RESPONSE", "TheSportsDB returned an empty body for livescores")],
+        warnings: [buildWarning("EMPTY_RESPONSE", "The live-score feed returned an empty body")],
       })
       return NextResponse.json(envelope)
     }
@@ -52,7 +62,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       data = JSON.parse(text)
     } catch {
       const envelope: NormalizedEnvelope<{ livescores: unknown[] }> = makeEmptyEnvelope({
-        source: "thesportsdb",
+        source: "internal",
         unavailableReason: "Failed to parse livescores response JSON",
       })
       return NextResponse.json(envelope)
@@ -61,7 +71,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const livescores = data?.livescores ?? []
     const envelope: NormalizedEnvelope<{ livescores: unknown[] }> = makeSuccessEnvelope({
       data: { livescores },
-      source: "thesportsdb",
+      source: "internal",
       fetchedAt,
       maxAgeSeconds: 30,
       live: true,
@@ -72,7 +82,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     })
   } catch (err) {
     const envelope: NormalizedEnvelope<{ livescores: unknown[] }> = makeEmptyEnvelope({
-      source: "thesportsdb",
+      source: "internal",
       unavailableReason: err instanceof Error ? err.message : "Network error",
     })
     return NextResponse.json(envelope)

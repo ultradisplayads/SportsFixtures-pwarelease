@@ -10,6 +10,7 @@ import { BottomNav } from "@/components/bottom-nav"
 import { PremiumHero } from "@/components/premium/premium-hero"
 import { PlanCard } from "@/components/premium/plan-card"
 import { FeatureComparison } from "@/components/premium/feature-comparison"
+import { RedeemCodeCard } from "@/components/premium/redeem-code-card"
 import { useEntitlements } from "@/hooks/use-entitlements"
 import { triggerHaptic } from "@/lib/haptic-feedback"
 import { useToast } from "@/hooks/use-toast"
@@ -78,6 +79,8 @@ export default function PremiumPage() {
                   ?.scrollIntoView({ behavior: "smooth" })
               }}
             />
+
+            <RedeemCodeCard />
 
             {/* Below-the-fold: full plan cards + comparison */}
             <section

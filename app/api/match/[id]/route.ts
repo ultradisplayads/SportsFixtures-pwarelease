@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSFEventById } from "@/lib/sf-api"
+import { getEventDetails } from "@/app/actions/sports-api"
 
 export async function GET(
   _req: NextRequest,
@@ -8,7 +9,10 @@ export async function GET(
   const { id } = await params
 
   try {
-    const event = await getSFEventById(id)
+    let event = await getSFEventById(id)
+    if (!event) {
+      event = await getEventDetails(id) as any
+    }
     if (!event) {
       return NextResponse.json({ error: "Not found" }, { status: 404 })
     }

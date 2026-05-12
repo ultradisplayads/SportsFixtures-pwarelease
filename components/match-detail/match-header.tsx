@@ -1,6 +1,6 @@
 "use client"
 
-import { Star, ArrowLeft } from "lucide-react"
+import { Star, ArrowLeft, Clock, MapPin, CloudSun } from "lucide-react"
 import { ShareButton } from "@/components/share-button"
 import { SmartLogo } from "@/components/assets/smart-logo"
 import { shareManager } from "@/lib/share-manager"
@@ -25,9 +25,14 @@ interface MatchData {
   league: string
   stadium: string
   date: string
+  time: string
+  timeLocal: string
+  timestamp: string
   idHomeTeam: string
   idAwayTeam: string
   idLeague: string
+  homeForm: string
+  awayForm: string
 }
 
 const PLACEHOLDER: MatchData = {
@@ -37,9 +42,72 @@ const PLACEHOLDER: MatchData = {
   league: "",
   stadium: "",
   date: "",
+  time: "",
+  timeLocal: "",
+  timestamp: "",
   idHomeTeam: "",
   idAwayTeam: "",
   idLeague: "",
+  homeForm: "",
+  awayForm: "",
+}
+
+type WeatherInfo = {
+  label: string
+  temperature?: number
+  precipitation?: number
+  venueTimezone?: string
+}
+
+function buildKickoffDate(match: MatchData): Date | null {
+  const raw = match.timestamp || (match.date ? `${match.date}T${match.time || match.timeLocal || "00:00:00"}` : "")
+  if (!raw) return null
+  const normalized = raw.includes("T") && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw) ? `${raw}Z` : raw
+  const date = new Date(normalized)
+  return Number.isFinite(date.getTime()) ? date : null
+}
+
+function formatKickoff(date: Date | null, timeZone?: string) {
+  if (!date) return null
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(date)
+}
+
+function weatherCodeLabel(code?: number) {
+  if (code == null) return "Forecast TBC"
+  if (code === 0) return "Clear"
+  if ([1, 2].includes(code)) return "Partly cloudy"
+  if (code === 3) return "Cloudy"
+  if ([45, 48].includes(code)) return "Fog"
+  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return "Rain possible"
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "Snow possible"
+  if ([95, 96, 99].includes(code)) return "Storm risk"
+  return "Forecast"
+}
+
+function FormDots({ form, team }: { form: string; team: string }) {
+  const chars = form.toUpperCase().split("").filter(Boolean).slice(0, 5)
+  if (!chars.length) return <span className="text-[11px] text-muted-foreground">Form TBC</span>
+  return (
+    <div className="flex items-center gap-1" aria-label={`${team} last 5 form ${form}`}>
+      {chars.map((char, index) => (
+        <span
+          key={`${char}-${index}`}
+          title={char === "W" ? "Win" : char === "D" ? "Draw" : "Loss"}
+          className={`h-2.5 w-2.5 rounded-full ${
+            char === "W" ? "bg-green-500" : char === "D" ? "bg-yellow-400" : "bg-red-500"
+          }`}
+        />
+      ))}
+    </div>
+  )
 }
 
 export function MatchHeader({ matchId }: MatchHeaderProps) {
@@ -96,9 +164,14 @@ export function MatchHeader({ matchId }: MatchHeaderProps) {
             league: sfEvent.league?.name || sfEvent.strLeague || "",
             stadium: sfEvent.strVenue || "",
             date: sfEvent.dateEvent || "",
+            time: sfEvent.strTime || "",
+            timeLocal: sfEvent.strTimeLocal || "",
+            timestamp: sfEvent.strTimestamp || "",
             idHomeTeam: sfEvent.idHomeTeam as string || sfEvent.homeTeam?.id as string || "",
             idAwayTeam: sfEvent.idAwayTeam as string || sfEvent.awayTeam?.id as string || "",
             idLeague: sfEvent.league?.id as string || "",
+            homeForm: "",
+            awayForm: "",
           }
           cacheSet("match", matchId, sfMatchData)
           setMatch(sfMatchData)
@@ -110,6 +183,7 @@ export function MatchHeader({ matchId }: MatchHeaderProps) {
       try {
         const event = await getEventDetails(matchId)
         if (event) {
+          const providerEvent = event as any
           const tsdbMatchData: MatchData = {
             home: {
               name: event.strHomeTeam,
@@ -125,9 +199,14 @@ export function MatchHeader({ matchId }: MatchHeaderProps) {
             league: event.strLeague || "",
             stadium: event.strVenue || "",
             date: event.dateEvent || "",
+            time: event.strTime || "",
+            timeLocal: providerEvent.strTimeLocal || "",
+            timestamp: providerEvent.strTimestamp || "",
             idHomeTeam: event.idHomeTeam,
             idAwayTeam: event.idAwayTeam,
             idLeague: event.idLeague,
+            homeForm: "",
+            awayForm: "",
           }
           cacheSet("match", matchId, tsdbMatchData)
           setMatch(tsdbMatchData)
@@ -141,6 +220,70 @@ export function MatchHeader({ matchId }: MatchHeaderProps) {
     load()
   }, [matchId])
 
+  useEffect(() => {
+    let cancelled = false
+    async function loadForm() {
+      try {
+        const res = await fetch(`/api/match-center/${matchId}`, { cache: "no-store" })
+        if (!res.ok) return
+        const data = await res.json()
+        const rows = Array.isArray(data?.standings?.data) ? data.standings.data : []
+        const home = rows.find((row: any) => row.isHomeTeam)?.form || ""
+        const away = rows.find((row: any) => row.isAwayTeam)?.form || ""
+        if (!cancelled && (home || away)) {
+          setMatch((current) => ({ ...current, homeForm: home, awayForm: away }))
+        }
+      } catch {
+        // Form stays as TBC when standings/form are unavailable.
+      }
+    }
+    loadForm()
+    return () => { cancelled = true }
+  }, [matchId])
+
+  const [weather, setWeather] = useState<WeatherInfo | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadWeather() {
+      const kickoff = buildKickoffDate(match)
+      if (!match.stadium || !kickoff) {
+        setWeather(null)
+        return
+      }
+
+      try {
+        const geoRes = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(match.stadium)}&count=1&language=en&format=json`,
+        )
+        const geo = await geoRes.json()
+        const place = geo?.results?.[0]
+        if (!place?.latitude || !place?.longitude) return
+
+        const forecastRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&hourly=temperature_2m,precipitation_probability,weather_code&timezone=${encodeURIComponent(place.timezone || "auto")}`,
+        )
+        const forecast = await forecastRes.json()
+        const hourlyTimes: string[] = forecast?.hourly?.time ?? []
+        const targetHour = kickoff.toISOString().slice(0, 13)
+        let index = hourlyTimes.findIndex((time) => time.startsWith(targetHour))
+        if (index < 0) index = 0
+
+        const nextWeather: WeatherInfo = {
+          label: weatherCodeLabel(forecast?.hourly?.weather_code?.[index]),
+          temperature: forecast?.hourly?.temperature_2m?.[index],
+          precipitation: forecast?.hourly?.precipitation_probability?.[index],
+          venueTimezone: place.timezone,
+        }
+        if (!cancelled) setWeather(nextWeather)
+      } catch {
+        if (!cancelled) setWeather({ label: "Forecast TBC" })
+      }
+    }
+    loadWeather()
+    return () => { cancelled = true }
+  }, [match.stadium, match.date, match.time, match.timeLocal, match.timestamp])
+
   const handleFavorite = async () => {
     await toggleFavourite()
     toast({
@@ -151,6 +294,9 @@ export function MatchHeader({ matchId }: MatchHeaderProps) {
 
   const shareData = shareManager.getMatchShareData(match.home.name, match.away.name, matchId)
   const inPlay = formatInPlayTime(match.status)
+  const kickoff = buildKickoffDate(match)
+  const localKickoff = formatKickoff(kickoff)
+  const venueKickoff = formatKickoff(kickoff, weather?.venueTimezone)
 
   const scoreDisplay = (score: number | null) =>
     score != null ? String(score) : inPlay.isFinished ? "0" : "-"
@@ -209,9 +355,49 @@ export function MatchHeader({ matchId }: MatchHeaderProps) {
           </div>
         </div>
 
-        {match.stadium && (
-          <p className="mt-4 text-center text-xs text-muted-foreground">{match.stadium}</p>
-        )}
+        <div className="mt-5 grid gap-2 rounded-xl border border-border bg-background/70 p-3 text-xs sm:grid-cols-3">
+          <div className="flex items-start gap-2">
+            <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+            <div>
+              <p className="font-semibold text-foreground">Kickoff</p>
+              <p className="text-muted-foreground">{localKickoff || "Start time TBC"}</p>
+              <p className="text-muted-foreground">
+                Venue: {venueKickoff || (match.timeLocal ? `${match.date} ${match.timeLocal}` : "Time TBC")}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2">
+            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+            <div>
+              <p className="font-semibold text-foreground">Stadium</p>
+              <p className="text-muted-foreground">{match.stadium || "Venue TBC"}</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2">
+            <CloudSun className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+            <div>
+              <p className="font-semibold text-foreground">Expected weather</p>
+              <p className="text-muted-foreground">
+                {weather
+                  ? `${weather.label}${weather.temperature != null ? `, ${Math.round(weather.temperature)}°C` : ""}${weather.precipitation != null ? `, ${weather.precipitation}% rain` : ""}`
+                  : "Forecast loading"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+          <div className="flex items-center justify-between rounded-lg bg-background/70 px-3 py-2">
+            <span className="truncate font-medium">{match.home.name} last 5</span>
+            <FormDots form={match.homeForm} team={match.home.name} />
+          </div>
+          <div className="flex items-center justify-between rounded-lg bg-background/70 px-3 py-2">
+            <span className="truncate font-medium">{match.away.name} last 5</span>
+            <FormDots form={match.awayForm} team={match.away.name} />
+          </div>
+        </div>
       </div>
 
       {/* Actions */}

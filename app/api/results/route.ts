@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       { items, generatedAt: new Date().toISOString() },
-      { headers: { "Cache-Control": "no-store" } },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=3600" } },
     )
   } catch (err) {
     console.error("[api/results]", err)

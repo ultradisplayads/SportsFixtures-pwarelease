@@ -39,7 +39,9 @@ export function TickerItemRenderer({ item, index = 0, totalItems = 1, scorePulsi
 
   const inner = (
     <span
-      className="flex shrink-0 items-center gap-2 px-4 py-2.5 text-sm hover:bg-primary/80 transition-colors cursor-pointer"
+      className={`flex items-center gap-2 px-4 py-2.5 text-sm transition-colors hover:bg-primary/80 cursor-pointer ${
+        isSecondaryType ? "min-w-0 w-full" : "shrink-0"
+      }`}
       onClick={() => handleTap(item)}
     >
       {/* Score/status badge — AnimatedLiveScoreItem handles pulse internally

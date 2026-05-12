@@ -1,7 +1,7 @@
 "use client"
 
 // app/admin/xibo/page.tsx
-// Xibo Signage Control — push fixture content to venue screens
+// Display Advertising / UDA control - push fixture content to venue displays
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
@@ -178,7 +178,7 @@ function VenueSettingsPanel({
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold flex items-center gap-2">
           <Settings className="h-4 w-4 text-primary" />
-          Xibo Settings — {venue.name}
+          Display Settings - {venue.name}
         </p>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
           <X className="h-4 w-4" />
@@ -188,7 +188,7 @@ function VenueSettingsPanel({
       {/* Enable toggle */}
       <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
         <div>
-          <p className="text-sm font-medium">Xibo Enabled</p>
+          <p className="text-sm font-medium">Display Advertising Enabled</p>
           <p className="text-xs text-muted-foreground">Push fixture content to this venue's screens daily</p>
         </div>
         <button
@@ -273,7 +273,7 @@ function VenueSettingsPanel({
       {/* Selected Teams */}
       <div className="space-y-1.5">
         <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Team IDs (from TheSportsDB)
+          Team IDs
         </label>
         <div className="flex gap-2">
           <input
@@ -308,7 +308,7 @@ function VenueSettingsPanel({
       {/* Selected Leagues */}
       <div className="space-y-1.5">
         <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          League IDs (from TheSportsDB)
+          League IDs
         </label>
         <div className="flex gap-2">
           <input
@@ -434,8 +434,8 @@ export default function XiboAdminPage() {
         </Link>
         <LogoBadge size={28} linked={false} />
         <div className="flex-1">
-          <h1 className="text-sm font-bold text-sidebar-foreground">Xibo Signage</h1>
-          <p className="text-[10px] text-sidebar-foreground/60">Digital Signage Control Panel</p>
+          <h1 className="text-sm font-bold text-sidebar-foreground">Display Advertising / UDA</h1>
+          <p className="text-[10px] text-sidebar-foreground/60">Venue Display Control Panel</p>
         </div>
         <button
           onClick={loadVenues}

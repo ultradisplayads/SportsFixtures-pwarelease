@@ -7,11 +7,12 @@ import { FollowButton } from "@/components/follow-button"
 import { SmartAvatar } from "@/components/assets/smart-avatar"
 import { SmartLogo } from "@/components/assets/smart-logo"
 
-export default async function PlayerPage({ params }: { params: { id: string } }) {
+export default async function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Suspense fallback={<SkeletonLoader count={8} />}>
-        <PlayerContent playerId={params.id} />
+        <PlayerContent playerId={id} />
       </Suspense>
     </div>
   )
